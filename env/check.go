@@ -50,33 +50,13 @@ func CheckArch(targetArch string) bool {
 	return false
 }
 
-// CheckCompiler validates that the current Node.js version matches the target.
-// Matching strategy:
-// - "node22" -> major version check only
-// - "node22.11.0" -> exact version match
+// CheckCompiler validates that the current Node.js version matches the target exactly.
+// Only exact version match is supported, e.g. "node22.11.0".
 func CheckCompiler(targetCompiler string) bool {
 	if targetCompiler == "" {
 		return true
 	}
 
-	// Determine if the target is major-only (e.g. "node22") or exact (e.g. "node22.11.0")
-	if !strings.Contains(targetCompiler, ".") {
-		// Major-only match: e.g. "node22"
-		actual := GetCompilerMajor()
-		if actual == "" {
-			warnf("cannot detect Node.js version (target=%s)", targetCompiler)
-			return false
-		}
-		expected := strings.TrimSpace(targetCompiler)
-		if actual == expected {
-			okf("COMPILER match (target=%s actual=%s)", expected, actual)
-			return true
-		}
-		warnf("COMPILER mismatch (target=%s actual=%s)", expected, actual)
-		return false
-	}
-
-	// Exact match: e.g. "node22.11.0"
 	actual := GetCompiler()
 	if actual == "" {
 		warnf("cannot detect Node.js version (target=%s)", targetCompiler)

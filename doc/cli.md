@@ -43,7 +43,7 @@ environments:
     toolchain:
       os: ubuntu22.04
       arch: amd64v1
-      compiler: node22        # 大版本匹配；精确匹配写 node22.11.0
+      compiler: node22.11.0    # 精确版本匹配
       variant: bundle          # bundle = esbuild 打包；full = 全量 zip
     warehouse:
       local: /tmp/warehouse
@@ -72,7 +72,7 @@ procedures:
 | `name` | 环境标识 | `default` |
 | `toolchain.os` | 目标操作系统 | `ubuntu22.04`、`darwin14.2.1` |
 | `toolchain.arch` | 目标架构 | `amd64v1`、`arm64v8` |
-| `toolchain.compiler` | Node.js 版本 | `node22`（大版本）、`node22.11.0`（精确） |
+| `toolchain.compiler` | Node.js 版本 | `node22.11.0`（精确匹配） |
 | `toolchain.variant` | 构建方式 | `bundle` 或 `full` |
 | `warehouse.local` | 本地仓库路径 | `/tmp/warehouse` |
 | `warehouse.remote` | S3 远程仓库列表 | `s3://my-bucket` |
@@ -101,7 +101,7 @@ procedures:
 例如：
 
 ```
-/tmp/warehouse/ubuntu22.04_amd64v1_node22_bundle/myteam_app_v1.0.0/
+/tmp/warehouse/ubuntu22.04_amd64v1_node22.11.0_bundle/myteam_app_v1.0.0/
   libnode_myteam_app_v1.0.0.zip
   libnode_myteam_app_v1.0.0.zip.2024-05-19T103000Z
 ```
@@ -261,7 +261,7 @@ dynamic-node toolchain check -p my-app
 ```
 pass: OS match (target=ubuntu22.04 actual=ubuntu22.04)
 pass: ARCH match (target=amd64v1 actual=amd64v1)
-pass: COMPILER match (target=node22 actual=node22)
+pass: COMPILER match (target=node22.11.0 actual=node22.11.0)
 ```
 
 #### toolchain describe
@@ -350,14 +350,11 @@ dynamic-node clean all
 
 ## 6. Compiler 匹配规则
 
-`toolchain.compiler` 字段支持两种匹配粒度：
+`toolchain.compiler` 字段要求精确匹配 Node.js 版本号。
 
 | 配置值 | 匹配方式 | 示例 |
 |--------|---------|------|
-| `node22` | 仅检查 Node.js 大版本是否为 22 | 本地 v22.0.0 ~ v22.x.x 均通过 |
 | `node22.11.0` | 精确匹配完整版本号 | 仅本地 v22.11.0 通过 |
-
-Node.js 在同一大版本内遵循 SemVer 且 ABI 稳定（N-API 跨版本兼容），大版本匹配已覆盖绝大多数场景。
 
 ## 7. 构建方式对比
 

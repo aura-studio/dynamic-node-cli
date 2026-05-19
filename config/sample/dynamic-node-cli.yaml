@@ -3,7 +3,7 @@ environments:
     toolchain:
       os: ubuntu22.04
       arch: amd64v1
-      compiler: node22
+      compiler: node22.11.0
       variant: bundle           # "bundle" = esbuild bundle; "full" = full node_modules + zip
     warehouse:
       local: /tmp/warehouse

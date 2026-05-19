@@ -16,7 +16,7 @@ type Config struct {
 		Toolchain struct {
 			OS       string `yaml:"os"`
 			Arch     string `yaml:"arch"`
-			Compiler string `yaml:"compiler"` // e.g. "node22", "node22.11.0"
+			Compiler string `yaml:"compiler"` // e.g. "node22.11.0"
 			Variant  string `yaml:"variant"`  // "bundle" or "full"
 		} `yaml:"toolchain"`
 		Warehouse struct {
