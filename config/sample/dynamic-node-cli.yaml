@@ -1,0 +1,23 @@
+environments:
+  - name: default
+    toolchain:
+      os: ubuntu22.04
+      arch: amd64v1
+      compiler: node22
+      variant: bundle           # "bundle" = esbuild bundle; "full" = full node_modules + zip
+    warehouse:
+      local: /tmp/warehouse
+      remote:
+        - s3://mirroring-lambda
+
+procedures:
+  - name: my-app
+    environment: default
+    source:
+      path: ./src/app           # Node project local path
+      entry: index.js           # entry point file
+      version: latest           # source version tag
+    target:
+      namespace: myteam
+      package: app
+      version: v1.0.0
