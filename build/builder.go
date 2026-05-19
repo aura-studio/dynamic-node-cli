@@ -107,7 +107,7 @@ func (b *Builder) buildBundle() {
 	b.createBundleZip(zipPath)
 
 	// Create timestamped backup
-	backupPath := zipPath + "." + time.Now().UTC().Format("2006-01-02T150405Z")
+	backupPath := zipPath + "." + time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	b.copyFile(zipPath, backupPath)
 
 	fmt.Printf("output: %s\n", zipPath)
@@ -124,7 +124,7 @@ func (b *Builder) buildFull() {
 	b.createFullZip(zipPath, srcPath)
 
 	// Create timestamped backup
-	backupPath := zipPath + "." + time.Now().UTC().Format("2006-01-02T150405Z")
+	backupPath := zipPath + "." + time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	b.copyFile(zipPath, backupPath)
 
 	fmt.Printf("output: %s\n", zipPath)
