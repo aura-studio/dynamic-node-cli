@@ -4,7 +4,7 @@ environments:
       os: ubuntu22.04
       arch: amd64v1
       compiler: node22.11.0
-      variant: generic          # "generic"/"bundle" = esbuild bundle; "full" = full node_modules + zip
+      variant: bundle           # "bundle" = esbuild bundle; "full" = full node_modules + zip
     warehouse:
       local: /tmp/warehouse
       remote:

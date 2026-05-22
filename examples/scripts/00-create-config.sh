@@ -18,7 +18,7 @@ environments:
       os: ${os_value}
       arch: ${arch_value}
       compiler: ${compiler_value}
-      variant: generic
+      variant: bundle
     warehouse:
       local: ${WAREHOUSE_DIR}
       remote:

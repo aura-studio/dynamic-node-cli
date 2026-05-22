@@ -43,7 +43,7 @@ environments:
       os: ubuntu22.04
       arch: amd64v1
       compiler: node22.11.0    # 精确版本匹配
-      variant: generic         # generic/bundle = esbuild 打包；full = 全量 zip
+      variant: bundle          # bundle = esbuild 打包；full = 全量 zip
     warehouse:
       local: /tmp/warehouse
       remote:
@@ -72,7 +72,7 @@ procedures:
 | `toolchain.os` | 目标操作系统 | `ubuntu22.04`、`darwin14.2.1` |
 | `toolchain.arch` | 目标架构 | `amd64v1`、`arm64v8` |
 | `toolchain.compiler` | Node.js 版本 | `node22.11.0`（精确匹配） |
-| `toolchain.variant` | 构建方式 | `generic`、`bundle` 或 `full` |
+| `toolchain.variant` | 构建方式 | `bundle` 或 `full` |
 | `warehouse.local` | 本地仓库路径 | `/tmp/warehouse` |
 | `warehouse.remote` | S3 远程仓库列表 | `s3://my-bucket` |
 
@@ -114,7 +114,7 @@ dynamic-node build [-c <config>] [-p <procedure>]
 
 **构建流程取决于 `variant`：**
 
-- **`generic` / `bundle`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 通过 esbuild 将 `index.js` bundle 为单个 `bundle.js` -> 打包为 zip
+- **`bundle`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 通过 esbuild 将 `index.js` bundle 为单个 `bundle.js` -> 打包为 zip
 - **`full`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 将整个项目目录（含 `node_modules`）打包为 zip
 
 构建前会自动检查当前机器的 OS、Arch、Compiler 是否匹配配置，不匹配则跳过。
@@ -224,7 +224,7 @@ dynamic-node push -p my-app
 
 ## 7. 构建方式对比
 
-| | `variant: generic` / `bundle` | `variant: full` |
+| | `variant: bundle` | `variant: full` |
 |---|---|---|
 | 流程 | npm install -> esbuild bundle -> zip | npm install -> 整个目录 zip |
 | 产物体积 | 小（通常 < 5 MB） | 大（几十 ~ 几百 MB） |
@@ -232,4 +232,4 @@ dynamic-node push -p my-app
 | 兼容性 | 好（90%+ 项目） | 最好（native addon 可用） |
 | 适用场景 | 纯 JS/TS 项目 | 含 native addon 的项目 |
 
-默认推荐使用 `generic`。如果项目使用 native addon（如 `better-sqlite3`）、依赖 `__dirname`/`__filename`、或使用动态 `require` 路径，应切换到 `full`。
+默认推荐使用 `bundle`。如果项目使用 native addon（如 `better-sqlite3`）、依赖 `__dirname`/`__filename`、或使用动态 `require` 路径，应切换到 `full`。

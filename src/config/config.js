@@ -39,12 +39,11 @@ export function validateConfig(config) {
       );
     }
     if (
-      toolchain.variant !== "generic" &&
       toolchain.variant !== "bundle" &&
       toolchain.variant !== "full"
     ) {
       throw new Error(
-        `config: environments[${i}].toolchain.variant must be 'generic', 'bundle', or 'full'`,
+        `config: environments[${i}].toolchain.variant must be 'bundle' or 'full'`,
       );
     }
 
