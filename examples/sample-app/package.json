@@ -1,0 +1,11 @@
+{
+  "name": "dynamic-node-cli-example-app",
+  "version": "1.0.0",
+  "description": "Example app for dynamic-node-cli manual tests",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {}
+}
