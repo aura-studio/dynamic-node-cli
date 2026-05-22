@@ -32,7 +32,7 @@ bash build.sh release
 
 ## 3. 配置文件
 
-CLI 默认在当前目录查找 `dynamic-node-cli.yaml` 或 `dynamic-node-cli.yml`，也可以用 `-c` 指定路径。
+CLI 默认在当前目录依次查找 `dynamic-node-cli.yaml`、`dynamic-node-cli.yml`、`dynamic-cli.yaml`、`dynamic-cli.yml`，也可以用 `-c` 指定路径。
 
 ### 最小示例
 
@@ -109,7 +109,7 @@ dynamic-node build [-c <config>] [-p <procedure>]
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--config` | `-c` | 配置文件路径 | `./dynamic-node-cli.yaml` 或 `.yml` |
+| `--config` | `-c` | 配置文件路径 | `./dynamic-node-cli.yaml`、`.yml`、`./dynamic-cli.yaml` 或 `.yml` |
 | `--procedure` | `-p` | 指定 procedure | 为空则构建全部 |
 
 **构建流程取决于 `variant`：**
@@ -139,7 +139,7 @@ dynamic-node pull [-c <config>] [-p <procedure>] [-j <concurrency>] [-f] [--remo
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--config` | `-c` | 配置文件路径 | `./dynamic-node-cli.yaml` 或 `.yml` |
+| `--config` | `-c` | 配置文件路径 | `./dynamic-node-cli.yaml`、`.yml`、`./dynamic-cli.yaml` 或 `.yml` |
 | `--procedure` | `-p` | 指定 procedure | 为空则拉取全部 |
 | `--concurrency` | `-j` | 最大并发下载数 | `8` |
 | `--force` | `-f` | 强制覆盖本地已有文件 | `false` |

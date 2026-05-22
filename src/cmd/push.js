@@ -2,14 +2,14 @@ import { Command } from "commander";
 import { parseConfig, validateConfig } from "../config/config.js";
 import { createProcedure, getAllProcedures } from "../config/procedure.js";
 import { pushForProcedure } from "../push/push.js";
-import { resolveConfigPath } from "./config-path.js";
+import { DEFAULT_CONFIG_PATHS_TEXT, resolveConfigPath } from "./config-path.js";
 
 export function createPushCommand() {
   return new Command("push")
     .description("Push build artifacts to S3 warehouse")
     .option(
       "-c, --config <path>",
-      "path to dynamic-node-cli.yaml (default: ./dynamic-node-cli.yaml or ./dynamic-node-cli.yml)",
+      `path to config file (default: ${DEFAULT_CONFIG_PATHS_TEXT})`,
       "",
     )
     .option(

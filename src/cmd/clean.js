@@ -8,7 +8,7 @@ import {
 } from "../clean/cleaner.js";
 import { parseConfig, validateConfig } from "../config/config.js";
 import { createProcedure, getAllProcedures } from "../config/procedure.js";
-import { resolveConfigPath } from "./config-path.js";
+import { DEFAULT_CONFIG_PATHS_TEXT, resolveConfigPath } from "./config-path.js";
 
 export function createCleanCommand() {
   const cleanCmd = new Command("clean")
@@ -27,7 +27,7 @@ function addCleanOptions(command) {
   return command
     .option(
       "-c, --config <path>",
-      "path to dynamic-node-cli.yaml (default: ./dynamic-node-cli.yaml or ./dynamic-node-cli.yml)",
+      `path to config file (default: ${DEFAULT_CONFIG_PATHS_TEXT})`,
       "",
     )
     .option("-p, --procedure <name>", "procedure name to select warehouse (optional)", "");

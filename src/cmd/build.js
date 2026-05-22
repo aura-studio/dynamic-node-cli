@@ -2,14 +2,14 @@ import { Command } from "commander";
 import { buildForProcedure } from "../build/build.js";
 import { parseConfig, validateConfig } from "../config/config.js";
 import { createProcedure, getAllProcedures } from "../config/procedure.js";
-import { resolveConfigPath } from "./config-path.js";
+import { DEFAULT_CONFIG_PATHS_TEXT, resolveConfigPath } from "./config-path.js";
 
 export function createBuildCommand() {
   return new Command("build")
     .description("Build Node.js project into zip package")
     .option(
       "-c, --config <path>",
-      "path to dynamic-node-cli.yaml (default: ./dynamic-node-cli.yaml or ./dynamic-node-cli.yml)",
+      `path to config file (default: ${DEFAULT_CONFIG_PATHS_TEXT})`,
       "",
     )
     .option(

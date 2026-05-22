@@ -8,7 +8,7 @@ import {
   KindCompiler,
   KindOS,
 } from "../toolchain/check.js";
-import { resolveConfigPath } from "./config-path.js";
+import { DEFAULT_CONFIG_PATHS_TEXT, resolveConfigPath } from "./config-path.js";
 
 export function createToolchainCommand() {
   const toolchainCmd = new Command("toolchain")
@@ -26,7 +26,7 @@ function createToolchainCheckCommand() {
     .description("Check OS / Arch / Compiler in one run")
     .option(
       "-c, --config <path>",
-      "path to dynamic-node-cli.yaml (default: ./dynamic-node-cli.yaml if exists)",
+      `path to config file (default: ${DEFAULT_CONFIG_PATHS_TEXT})`,
       "",
     )
     .option("-p, --procedure <name>", "procedure name to check (required)", "")
