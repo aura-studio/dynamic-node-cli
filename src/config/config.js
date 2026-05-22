@@ -38,9 +38,13 @@ export function validateConfig(config) {
         `config: environments[${i}].toolchain fields contain invalid characters`,
       );
     }
-    if (toolchain.variant !== "bundle" && toolchain.variant !== "full") {
+    if (
+      toolchain.variant !== "generic" &&
+      toolchain.variant !== "bundle" &&
+      toolchain.variant !== "full"
+    ) {
       throw new Error(
-        `config: environments[${i}].toolchain.variant must be 'bundle' or 'full'`,
+        `config: environments[${i}].toolchain.variant must be 'generic', 'bundle', or 'full'`,
       );
     }
 
@@ -78,7 +82,7 @@ export function validateConfig(config) {
     }
 
     const source = procedure.source ?? {};
-    if (!source.path || !source.entry || !source.version) {
+    if (!source.module || !source.package || !source.version) {
       throw new Error(`config: procedures[${i}] source fields must not be empty`);
     }
 

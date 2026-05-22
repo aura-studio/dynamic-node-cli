@@ -18,7 +18,7 @@ environments:
       os: ${os_value}
       arch: ${arch_value}
       compiler: ${compiler_value}
-      variant: bundle
+      variant: generic
     warehouse:
       local: ${WAREHOUSE_DIR}
       remote:
@@ -38,8 +38,8 @@ procedures:
   - name: sample-bundle
     environment: bundle-env
     source:
-      path: ${APP_DIR}
-      entry: index.js
+      module: ${EXAMPLES_DIR}
+      package: sample-app
       version: latest
     target:
       namespace: test
@@ -48,8 +48,8 @@ procedures:
   - name: sample-full
     environment: full-env
     source:
-      path: ${APP_DIR}
-      entry: index.js
+      module: ${EXAMPLES_DIR}
+      package: sample-app
       version: latest
     target:
       namespace: test

@@ -27,8 +27,8 @@ export async function buildForProcedure(proc) {
 
   const renderData = {
     name,
-    sourcePath: proc.source.path,
-    entry: proc.source.entry,
+    sourcePath: createSourcePath(proc.source.module, proc.source.package),
+    entry: "index.js",
     version: proc.source.version,
     house: proc.warehouse.local,
     environment,
@@ -40,4 +40,11 @@ export async function buildForProcedure(proc) {
   };
 
   await new Builder(renderData).build();
+}
+
+function createSourcePath(moduleName, packageName) {
+  if (path.isAbsolute(packageName)) {
+    return packageName;
+  }
+  return path.join(moduleName, packageName);
 }

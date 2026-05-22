@@ -33,8 +33,8 @@ export function createProcedure(config, procedureName) {
       remote: [...environment.warehouse.remote],
     },
     source: {
-      path: procedure.source.path,
-      entry: procedure.source.entry,
+      module: procedure.source.module,
+      package: procedure.source.package,
       version: procedure.source.version,
     },
     target: {
