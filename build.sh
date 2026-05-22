@@ -13,9 +13,9 @@ usage() {
 Usage: $(basename "$0") [install|docker|release|help] [--version <v>]
 
 Commands:
-	install   Install the CLI at current git revision
+	install   Install the CLI from this checkout with npm
 	docker    Build Docker image with tag :latest and VERSION arg
-	release   Build multi-platform binaries into dist/
+	release   Create an npm package tarball in dist/
 	help      Show this help
 
 Options:
@@ -24,10 +24,9 @@ EOF
 }
 
 install() {
-	echo "Installing github.com/aura-studio/dynamic-node-cli@${VERSION}"
-	go build -o dynamic-node-cli ./
-	echo "Moving dynamic-node-cli to /usr/local/bin"
-	sudo mv dynamic-node-cli /usr/local/bin/
+	echo "Installing dynamic-node-cli (VERSION=${VERSION})"
+	npm install
+	VERSION="${VERSION}" npm install -g .
 }
 
 docker_build() {
@@ -36,23 +35,15 @@ docker_build() {
 }
 
 release() {
-	echo "Building release binaries (VERSION=${VERSION})"
+	echo "Packing npm release tarball (VERSION=${VERSION})"
 	mkdir -p dist
-	platforms=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
-	for p in "${platforms[@]}"; do
-		IFS="/" read -r GOOS GOARCH <<<"$p"
-		outfile="dynamic-node-cli-${GOOS}-${GOARCH}"
-		[[ "$GOOS" == "windows" ]] && outfile+=".exe"
-		echo "  -> ${outfile}"
-		GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "dist/${outfile}" ./
-	done
+	VERSION="${VERSION}" npm pack --pack-destination dist
 	echo "Artifacts in dist/"
 }
 
 cmd="${1:-install}"
 shift || true
 
-# parse optional flags
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--version)

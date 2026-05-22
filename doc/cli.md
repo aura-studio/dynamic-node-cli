@@ -10,26 +10,25 @@ cd dynamic-node-cli
 bash build.sh install
 ```
 
-执行后 `dynamic-node` 会被安装到 `/usr/local/bin/`。
+执行后 `dynamic-node` 会通过 npm 安装为全局命令。
 
-### 多平台构建
+### 打包发布
 
 ```bash
 bash build.sh release
 ```
 
-产物输出到 `dist/` 目录，支持 linux/amd64、linux/arm64、darwin/amd64、darwin/arm64、windows/amd64。
+产物输出到 `dist/` 目录。
 
 ## 2. 前置依赖
 
 | 依赖 | 说明 |
 |------|------|
-| Go 1.21+ | 编译 CLI 本身 |
-| Node.js | 构建目标项目所需（`npm install`） |
-| npm | 随 Node.js 附带 |
+| Node.js 18+ | 运行 CLI 本身，并构建目标项目 |
+| npm | 安装 CLI 依赖和目标项目依赖 |
 | AWS 凭证 | push/pull 时需要，通过环境变量或 `~/.aws/credentials` 配置 |
 
-> esbuild 以 Go API 形式内嵌在二进制中，无需单独安装。
+> esbuild 以 Node.js 依赖形式安装，无需额外安装 Go 工具链。
 
 ## 3. 配置文件
 
@@ -92,18 +91,10 @@ procedures:
 
 ### 产物输出路径
 
-```
+```text
 <warehouse.local>/<os>_<arch>_<compiler>_<variant>/<namespace>_<package>_<version>/
-  libnode_<namespace>_<package>_<version>.zip                    # 主产物
-  libnode_<namespace>_<package>_<version>.zip.2024-05-19T103000Z # 带时间戳备份
-```
-
-例如：
-
-```
-/tmp/warehouse/ubuntu22.04_amd64v1_node22.11.0_bundle/myteam_app_v1.0.0/
-  libnode_myteam_app_v1.0.0.zip
-  libnode_myteam_app_v1.0.0.zip.2024-05-19T103000Z
+  libnode_<namespace>_<package>_<version>.zip
+  libnode_<namespace>_<package>_<version>.zip.2024-05-19T10:30:00Z
 ```
 
 ## 4. 命令参考
@@ -123,20 +114,10 @@ dynamic-node build [-c <config>] [-p <procedure>]
 
 **构建流程取决于 `variant`：**
 
-- **`bundle`（默认推荐）**：在 `source.path` 执行 `npm install` -> 通过 esbuild Go API 将入口文件 bundle 为单个 `bundle.js` -> 打包为 zip
+- **`bundle`**：在 `source.path` 执行 `npm install` -> 通过 esbuild 将入口文件 bundle 为单个 `bundle.js` -> 打包为 zip
 - **`full`**：在 `source.path` 执行 `npm install` -> 将整个项目目录（含 `node_modules`）打包为 zip
 
 构建前会自动检查当前机器的 OS、Arch、Compiler 是否匹配配置，不匹配则跳过。
-
-**示例：**
-
-```bash
-# 构建所有 procedures
-dynamic-node build
-
-# 指定配置文件和 procedure
-dynamic-node build -c ./my-config.yaml -p my-app
-```
 
 ### 4.2 push
 
@@ -146,26 +127,11 @@ dynamic-node build -c ./my-config.yaml -p my-app
 dynamic-node push [-c <config>] [-p <procedure>]
 ```
 
-| 参数 | 缩写 | 说明 | 默认值 |
-|------|------|------|--------|
-| `--config` | `-c` | 配置文件路径 | `./dynamic-node-cli.yaml` 或 `.yml` |
-| `--procedure` | `-p` | 指定 procedure | 为空则推送全部 |
-
 遍历 warehouse 本地目录，将匹配的 `.zip` 文件（含时间戳备份）上传至配置的所有 remote。远程路径与本地仓库路径保持一致。
-
-**示例：**
-
-```bash
-# 推送所有 procedures 的产物
-dynamic-node push
-
-# 只推送 my-app
-dynamic-node push -p my-app
-```
 
 ### 4.3 pull
 
-从 S3 仓库拉取产物到本地。
+从 S3 仓库拉取主产物到本地。
 
 ```bash
 dynamic-node pull [-c <config>] [-p <procedure>] [-j <concurrency>] [-f] [--remote <remote>]
@@ -179,19 +145,6 @@ dynamic-node pull [-c <config>] [-p <procedure>] [-j <concurrency>] [-f] [--remo
 | `--force` | `-f` | 强制覆盖本地已有文件 | `false` |
 | `--remote` | | 指定单个 remote（覆盖配置） | 使用配置中的所有 remote |
 
-**示例：**
-
-```bash
-# 拉取所有产物
-dynamic-node pull
-
-# 指定并发数，强制覆盖
-dynamic-node pull -p my-app -j 16 -f
-
-# 从指定 remote 拉取
-dynamic-node pull --remote s3://backup-bucket/prefix
-```
-
 ### 4.4 clean
 
 清理仓库产物。clean 命令包含 4 个子命令：
@@ -200,98 +153,33 @@ dynamic-node pull --remote s3://backup-bucket/prefix
 dynamic-node clean <subcommand> [-c <config>] [-p <procedure>]
 ```
 
-#### clean all
-
-删除 warehouse 目录下的所有内容。
-
-```bash
-dynamic-node clean all
-dynamic-node clean all -c ./my-config.yaml -p my-app
-```
-
-#### clean cache
-
-删除非 `.zip` 文件，保留 `.zip` 产物及其备份。
-
-```bash
-dynamic-node clean cache
-dynamic-node clean cache -p my-app
-```
-
-#### clean package
-
-删除所有 `.zip` 文件及其带日期的备份。
-
-```bash
-dynamic-node clean package
-dynamic-node clean package -p my-app
-```
-
-#### clean useless
-
-删除所有非 `.zip` 文件（仅保留不带日期后缀的 `.zip`）。
-
-```bash
-dynamic-node clean useless
-dynamic-node clean useless -p my-app
-```
+- `clean all`：删除 warehouse 目录下的所有内容
+- `clean cache`：删除非 `.zip` 文件，保留 `.zip` 产物及其备份
+- `clean package`：删除所有 `.zip` 文件及其带日期的备份
+- `clean useless`：删除所有非主 `.zip` 文件
 
 ### 4.5 toolchain
 
 工具链检测与描述。
 
-#### toolchain check
-
-检查当前机器的 OS / Arch / Compiler 是否匹配配置中的值。任一不匹配则退出码为 1。
-
 ```bash
 dynamic-node toolchain check -c <config> -p <procedure>
+dynamic-node toolchain describe [os|arch|compiler|all]
 ```
 
-`-p` 参数是**必须的**，因为需要知道检查哪个 procedure 对应的环境。
-
-**示例：**
-
-```bash
-dynamic-node toolchain check -p my-app
-```
+`toolchain check` 的 `-p` 参数是必须的，因为需要知道检查哪个 procedure 对应的环境。
 
 输出示例：
 
-```
+```text
 pass: OS match (target=ubuntu22.04 actual=ubuntu22.04)
 pass: ARCH match (target=amd64v1 actual=amd64v1)
 pass: COMPILER match (target=node22.11.0 actual=node22.11.0)
 ```
 
-#### toolchain describe
-
-输出当前机器的 toolchain 信息。
-
-```bash
-dynamic-node toolchain describe [os|arch|compiler|all]
-```
-
-**示例：**
-
-```bash
-# 查看全部信息
-dynamic-node toolchain describe all
-# OS: darwin15.7.3
-# Arch: amd64v1
-# Compiler: node22.11.0
-
-# 查看单个字段
-dynamic-node toolchain describe os
-# darwin15.7.3
-
-dynamic-node toolchain describe compiler
-# node22.11.0
-```
-
 ### 4.6 version
 
-输出 CLI 版本号、Go 版本和系统信息。
+输出 CLI 版本号、Node.js 版本和系统信息。
 
 ```bash
 dynamic-node version
@@ -299,20 +187,18 @@ dynamic-node version
 
 输出示例：
 
-```
+```text
 Version: dev
-Go:      go1.21.0 linux/amd64
+Node:    v22.11.0 linux/x64
 ```
 
-版本号可在编译时通过 ldflags 注入：
+版本号可通过环境变量注入：
 
 ```bash
-go build -ldflags "-X github.com/aura-studio/dynamic-node-cli/cmd.Version=v1.0.0" -o dynamic-node .
+VERSION=v1.0.0 dynamic-node version
 ```
 
 ## 5. 典型工作流
-
-### 5.1 构建并推送
 
 ```bash
 # 1. 编写配置
@@ -326,26 +212,6 @@ dynamic-node build -p my-app
 
 # 4. 推送到 S3
 dynamic-node push -p my-app
-```
-
-### 5.2 在部署机器上拉取
-
-```bash
-# 拉取产物到本地仓库
-dynamic-node pull -p my-app
-
-# 强制重新拉取
-dynamic-node pull -p my-app -f
-```
-
-### 5.3 清理
-
-```bash
-# 清理中间文件，保留 zip 产物
-dynamic-node clean cache
-
-# 全部清理
-dynamic-node clean all
 ```
 
 ## 6. Compiler 匹配规则
@@ -366,4 +232,4 @@ dynamic-node clean all
 | 兼容性 | 好（90%+ 项目） | 最好（native addon 可用） |
 | 适用场景 | 纯 JS/TS 项目 | 含 native addon 的项目 |
 
-默认推荐使用 `bundle`。如果项目使用了 native addon（如 `better-sqlite3`）、依赖 `__dirname`/`__filename`、或使用动态 `require` 路径，应切换到 `full`。
+默认推荐使用 `bundle`。如果项目使用 native addon（如 `better-sqlite3`）、依赖 `__dirname`/`__filename`、或使用动态 `require` 路径，应切换到 `full`。

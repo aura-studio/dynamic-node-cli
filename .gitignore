@@ -1,16 +1,16 @@
-# Binaries
+# Dependencies
+node_modules/
+
+# Local binaries
 dynamic-node
+dynamic-node-cli
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
-# Test binary
-*.test
-
-# Output of the go coverage tool
-*.out
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Dist
 dist/
