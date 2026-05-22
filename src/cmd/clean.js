@@ -43,6 +43,10 @@ function createCleanAllCommand() {
       ),
   ).action(async (options) => {
     const { config, procedureName } = loadCleanConfig(options);
+    if (!procedureName && config.procedures.length === 0) {
+      console.log("No procedures configured, skipping clean all.");
+      return;
+    }
     const procName = procedureName || config.procedures[0].name;
     const proc = createProcedure(config, procName);
     await cleanForProcedure(proc, CleanTypeAll);
@@ -115,6 +119,10 @@ function createCleanUselessCommand() {
       ),
   ).action(async (options) => {
     const { config, procedureName } = loadCleanConfig(options);
+    if (!procedureName && config.procedures.length === 0) {
+      console.log("No procedures configured, skipping clean useless.");
+      return;
+    }
     const procName = procedureName || config.procedures[0].name;
     const proc = createProcedure(config, procName);
     await cleanForProcedure(proc, CleanTypeUseless);

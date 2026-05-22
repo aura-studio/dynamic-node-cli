@@ -65,8 +65,11 @@ export function validateConfig(config) {
     envNames.add(env.name);
   });
 
-  if (!Array.isArray(config?.procedures) || config.procedures.length === 0) {
-    throw new Error("config: procedures must not be empty");
+  if (config.procedures == null) {
+    config.procedures = [];
+  }
+  if (!Array.isArray(config.procedures)) {
+    throw new Error("config: procedures must be an array");
   }
 
   config.procedures.forEach((procedure, i) => {

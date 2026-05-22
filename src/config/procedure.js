@@ -1,4 +1,7 @@
 export function getAllProcedures(config) {
+  if (!Array.isArray(config.procedures)) {
+    return [];
+  }
   return config.procedures.map((procedure) => procedure.name);
 }
 
