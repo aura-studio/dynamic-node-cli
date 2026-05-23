@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { createS3ClientConfig } from "../s3/client-config.js";
 
 export class S3Remote {
   constructor(bucket) {
@@ -21,7 +22,7 @@ export class S3Remote {
   }
 
   async createS3Client() {
-    let client = new S3Client({ region: "us-east-1" });
+    let client = new S3Client(createS3ClientConfig("us-east-1"));
     let output;
 
     try {
@@ -38,7 +39,7 @@ export class S3Remote {
     }
 
     const region = normalizeRegion(output.LocationConstraint);
-    client = new S3Client({ region });
+    client = new S3Client(createS3ClientConfig(region));
     return client;
   }
 

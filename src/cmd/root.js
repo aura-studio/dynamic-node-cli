@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { createBuildCommand } from "./build.js";
 import { createCleanCommand } from "./clean.js";
+import { createMetaCommand } from "./meta.js";
 import { createPullCommand } from "./pull.js";
 import { createPushCommand } from "./push.js";
 import { createToolchainCommand } from "./toolchain.js";
@@ -20,6 +21,7 @@ export async function execute(argv = process.argv) {
   rootCmd.addCommand(createPushCommand());
   rootCmd.addCommand(createPullCommand());
   rootCmd.addCommand(createCleanCommand());
+  rootCmd.addCommand(createMetaCommand());
   rootCmd.addCommand(createToolchainCommand());
   rootCmd.addCommand(createVersionCommand());
 

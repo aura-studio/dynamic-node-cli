@@ -16,6 +16,7 @@ trap cleanup_remote EXIT
 "${SCRIPT_DIR}/05-build-all.sh"
 "${SCRIPT_DIR}/06-push.sh"
 "${SCRIPT_DIR}/07-pull.sh"
+"${SCRIPT_DIR}/14-meta.sh"
 "${SCRIPT_DIR}/08-clean-cache.sh"
 "${SCRIPT_DIR}/09-clean-useless.sh"
 "${SCRIPT_DIR}/10-clean-package.sh"

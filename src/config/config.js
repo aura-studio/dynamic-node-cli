@@ -7,7 +7,7 @@ export function parseConfig(file) {
 }
 
 export function validateConfig(config) {
-  const allowed = /^[A-Za-z0-9._-]+$/;
+  const allowed = /^[A-Za-z0-9.-]+$/;
 
   const envNames = new Set();
   if (!Array.isArray(config?.environments) || config.environments.length === 0) {
@@ -35,7 +35,7 @@ export function validateConfig(config) {
       !allowed.test(toolchain.variant)
     ) {
       throw new Error(
-        `config: environments[${i}].toolchain fields contain invalid characters`,
+        `config: environments[${i}].toolchain fields contain invalid characters (allowed: letters, digits, '.', '-')`,
       );
     }
     if (

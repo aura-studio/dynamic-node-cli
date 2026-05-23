@@ -6,6 +6,7 @@ import {
   ListObjectsV2Command,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { createS3ClientConfig } from "../s3/client-config.js";
 
 export class S3Remote {
   constructor(remote) {
@@ -22,7 +23,7 @@ export class S3Remote {
   }
 
   createS3Client() {
-    return new S3Client({});
+    return new S3Client(createS3ClientConfig());
   }
 
   async pullArtifacts(environment, name, localWarehouse, opt) {

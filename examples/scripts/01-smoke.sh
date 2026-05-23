@@ -13,5 +13,6 @@ ensure_dependencies
 cli --help
 cli version
 cli toolchain describe all
+cli toolchain script | grep -q "DYNAMIC_COMPILER"
 
 echo "smoke test passed"

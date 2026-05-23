@@ -1,19 +1,27 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { build as esbuild } from "esbuild";
 import yazl from "yazl";
+import { createBuildMeta, META_FILE, stringifyMeta } from "../meta/meta.js";
+import { validateTunnelEntry } from "./validate-tunnel.js";
 
 export class Builder {
   constructor(config) {
     this.config = config;
+    this.sourcePath = null;
+    this.netrcState = null;
   }
 
   async build() {
     console.log("start...");
     try {
       await fs.promises.mkdir(this.config.dir, { recursive: true, mode: 0o755 });
+      await this.writeNetrcFromEnv();
+      this.sourcePath = await this.prepareSourcePath();
       this.npmInstall();
+      await this.validateTunnel();
 
       if (this.config.variant === "full") {
         await this.buildFull();
@@ -21,6 +29,7 @@ export class Builder {
         await this.buildBundle();
       }
     } finally {
+      await this.restoreNetrc();
       console.log("done!");
     }
   }
@@ -29,11 +38,7 @@ export class Builder {
     const srcPath = this.resolveSourcePath();
     console.log(`npm install in ${srcPath}`);
 
-    const result = spawnSync("npm", ["install"], {
-      cwd: srcPath,
-      stdio: "inherit",
-      shell: process.platform === "win32",
-    });
+    const result = runNpm(["install"], srcPath);
 
     if (result.error || result.status !== 0) {
       throw new Error(`npm install failed: ${result.error?.message ?? result.status}`);
@@ -43,22 +48,35 @@ export class Builder {
   async buildBundle() {
     const srcPath = this.resolveSourcePath();
     const entryPoint = path.join(srcPath, this.config.entry);
+    const meta = this.createMeta();
+    const appBundlePath = path.join(this.config.dir, "dynamic-node-app.cjs");
+    const wrapperPath = path.join(this.config.dir, "bundle.js");
 
     console.log(`esbuild bundle ${entryPoint}`);
 
     await esbuild({
       entryPoints: [entryPoint],
       bundle: true,
-      outfile: path.join(this.config.dir, "bundle.js"),
+      outfile: appBundlePath,
       platform: "node",
       format: "cjs",
       write: true,
       logLevel: "info",
     });
+    await fs.promises.writeFile(
+      wrapperPath,
+      createCjsWrapper("./dynamic-node-app.cjs", meta),
+      "utf8",
+    );
+    await fs.promises.writeFile(
+      path.join(this.config.dir, "package.json"),
+      JSON.stringify({ type: "commonjs" }, null, 2) + "\n",
+      "utf8",
+    );
 
     const zipName = `libnode_${this.config.name}.zip`;
     const zipPath = path.join(this.config.dir, zipName);
-    await this.createBundleZip(zipPath);
+    await this.createBundleZip(zipPath, meta);
 
     const backupPath = `${zipPath}.${timestampSuffix()}`;
     await fs.promises.copyFile(zipPath, backupPath);
@@ -68,12 +86,14 @@ export class Builder {
 
   async buildFull() {
     const srcPath = this.resolveSourcePath();
+    const meta = this.createMeta();
 
     const zipName = `libnode_${this.config.name}.zip`;
     const zipPath = path.join(this.config.dir, zipName);
 
     console.log(`full zip ${srcPath} -> ${zipPath}`);
-    await this.createFullZip(zipPath, srcPath);
+    await this.stageFullDirectory(srcPath, meta);
+    await this.createFullZip(zipPath, srcPath, meta);
 
     const backupPath = `${zipPath}.${timestampSuffix()}`;
     await fs.promises.copyFile(zipPath, backupPath);
@@ -82,23 +102,151 @@ export class Builder {
   }
 
   resolveSourcePath() {
+    if (this.sourcePath) {
+      return this.sourcePath;
+    }
     if (path.isAbsolute(this.config.sourcePath)) {
       return this.config.sourcePath;
     }
     return path.join(process.cwd(), this.config.sourcePath);
   }
 
-  async createBundleZip(zipPath) {
+  async prepareSourcePath() {
+    const localSourcePath = this.resolveSourcePath();
+    if (await exists(localSourcePath)) {
+      return localSourcePath;
+    }
+
+    if (looksLikeLocalPath(this.config.sourceModule)) {
+      throw new Error(`source path not found: ${localSourcePath}`);
+    }
+
+    return this.installExternalSource();
+  }
+
+  installExternalSource() {
+    const sourceRoot = path.join(this.config.dir, ".dynamic-source");
+    const spec = createNpmSpec(this.config.sourceModule, this.config.sourceVersion);
+
+    console.log(`npm install source ${spec}`);
+    fs.rmSync(sourceRoot, { recursive: true, force: true });
+    fs.mkdirSync(sourceRoot, { recursive: true, mode: 0o755 });
+
+    const result = runNpm(["install", spec], sourceRoot);
+    if (result.error || result.status !== 0) {
+      throw new Error(`npm install source failed: ${result.error?.message ?? result.status}`);
+    }
+
+    const moduleRoot = findInstalledPackageRoot(sourceRoot, this.config.sourceModule);
+    const packagePath = this.config.sourcePackage === "."
+      ? moduleRoot
+      : path.join(moduleRoot, this.config.sourcePackage);
+    if (!fs.existsSync(packagePath)) {
+      throw new Error(`source package path not found after install: ${packagePath}`);
+    }
+    return packagePath;
+  }
+
+  async validateTunnel() {
+    const entryPoint = path.join(this.resolveSourcePath(), this.config.entry);
+    console.log(`validate tunnel ${entryPoint}`);
+    await validateTunnelEntry(entryPoint);
+  }
+
+  createMeta() {
+    return createBuildMeta(this.config);
+  }
+
+  async createBundleZip(zipPath, meta) {
     const bundlePath = path.join(this.config.dir, "bundle.js");
+    const appBundlePath = path.join(this.config.dir, "dynamic-node-app.cjs");
     await writeZip(zipPath, (zipfile) => {
       zipfile.addFile(bundlePath, "bundle.js");
+      zipfile.addFile(appBundlePath, "dynamic-node-app.cjs");
+      zipfile.addBuffer(Buffer.from(JSON.stringify({ type: "commonjs" }, null, 2) + "\n"), "package.json");
+      zipfile.addBuffer(Buffer.from(stringifyMeta(meta)), META_FILE);
     });
   }
 
-  async createFullZip(zipPath, srcDir) {
+  async createFullZip(zipPath, srcDir, meta) {
+    const packageInfo = await readPackageInfo(srcDir);
+    const entryFile = "dynamic-node-entry.cjs";
+    const appRequire = `./${toZipPath(packageInfo.main || "index.js")}`;
+    const packageJson = {
+      ...packageInfo.packageJson,
+      main: entryFile,
+    };
+
     await writeZip(zipPath, async (zipfile) => {
       await addDirectoryToZip(zipfile, srcDir, srcDir);
+      zipfile.addBuffer(Buffer.from(createCjsWrapper(appRequire, meta)), entryFile);
+      zipfile.addBuffer(Buffer.from(JSON.stringify(packageJson, null, 2) + "\n"), "package.json");
+      zipfile.addBuffer(Buffer.from(stringifyMeta(meta)), META_FILE);
     });
+  }
+
+  async stageFullDirectory(srcDir, meta) {
+    await copyDirectory(srcDir, this.config.dir);
+    const packageInfo = await readPackageInfo(srcDir);
+    const entryFile = "dynamic-node-entry.cjs";
+    const packageJson = {
+      ...packageInfo.packageJson,
+      main: entryFile,
+    };
+
+    await fs.promises.writeFile(
+      path.join(this.config.dir, entryFile),
+      createCjsWrapper(`./${toZipPath(packageInfo.main || "index.js")}`, meta),
+      "utf8",
+    );
+    await fs.promises.writeFile(
+      path.join(this.config.dir, "package.json"),
+      JSON.stringify(packageJson, null, 2) + "\n",
+      "utf8",
+    );
+    await fs.promises.writeFile(
+      path.join(this.config.dir, META_FILE),
+      stringifyMeta(meta),
+      "utf8",
+    );
+  }
+
+  async writeNetrcFromEnv() {
+    const netrc = getNetrcFromEnv();
+    if (!netrc.trim()) {
+      return;
+    }
+
+    const netrcPath = path.join(os.homedir(), process.platform === "win32" ? "_netrc" : ".netrc");
+    let original = null;
+    let existed = false;
+    try {
+      original = await fs.promises.readFile(netrcPath);
+      existed = true;
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        throw err;
+      }
+    }
+
+    console.log(`write ${netrcPath}`);
+    await fs.promises.writeFile(netrcPath, netrc, { mode: 0o600 });
+    this.netrcState = { netrcPath, original, existed };
+  }
+
+  async restoreNetrc() {
+    if (!this.netrcState) {
+      return;
+    }
+
+    const { netrcPath, original, existed } = this.netrcState;
+    console.log(`restore ${netrcPath}`);
+    if (existed) {
+      await fs.promises.writeFile(netrcPath, original, { mode: 0o600 });
+    } else {
+      await fs.promises.rm(netrcPath, { force: true });
+    }
+    this.netrcState = null;
   }
 }
 
@@ -128,6 +276,9 @@ async function addDirectoryToZip(zipfile, rootDir, currentDir) {
 
     const fullPath = path.join(currentDir, entry.name);
     const rel = toZipPath(path.relative(rootDir, fullPath));
+    if (rel === META_FILE || rel === "package.json" || rel === "dynamic-node-entry.cjs") {
+      continue;
+    }
 
     if (entry.isDirectory()) {
       zipfile.addEmptyDirectory(`${rel}/`);
@@ -144,5 +295,227 @@ function toZipPath(value) {
 }
 
 function timestampSuffix() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z").replaceAll(":", "-");
+}
+
+async function copyDirectory(srcDir, destDir) {
+  const srcRoot = path.resolve(srcDir);
+  const destRoot = path.resolve(destDir);
+  if (destRoot === srcRoot || destRoot.startsWith(srcRoot + path.sep)) {
+    throw new Error(`full build output directory must not be inside source directory: ${destDir}`);
+  }
+
+  await fs.promises.mkdir(destDir, { recursive: true, mode: 0o755 });
+  const entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === ".git") {
+      continue;
+    }
+
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirectory(src, dest);
+      continue;
+    }
+    await fs.promises.copyFile(src, dest);
+  }
+}
+
+async function readPackageInfo(srcDir) {
+  const packageJsonPath = path.join(srcDir, "package.json");
+  if (!(await exists(packageJsonPath))) {
+    return { packageJson: { type: "commonjs" }, main: "index.js" };
+  }
+
+  const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, "utf8"));
+  return {
+    packageJson,
+    main: packageJson.main || "index.js",
+  };
+}
+
+function createCjsWrapper(appRequire, meta) {
+  return `"use strict";
+
+const app = require(${JSON.stringify(appRequire)});
+const dynamicMeta = ${JSON.stringify(meta, null, 2)};
+
+function metaString() {
+  return JSON.stringify(dynamicMeta, null, 2);
+}
+
+function pick(value, lower, upper) {
+  if (value && typeof value[lower] === "function") return value[lower].bind(value);
+  if (value && typeof value[upper] === "function") return value[upper].bind(value);
+  return null;
+}
+
+function wrapTunnel(value) {
+  const init = pick(value, "init", "Init");
+  const invoke = pick(value, "invoke", "Invoke");
+  const close = pick(value, "close", "Close");
+  if (!init || !invoke || !close) {
+    throw new TypeError("dynamic-node wrapper: target is not a Tunnel");
+  }
+
+  return {
+    init,
+    invoke,
+    meta() {
+      return dynamicMeta;
+    },
+    close,
+    Init() {
+      return init();
+    },
+    Invoke(route, request) {
+      return invoke(route, request);
+    },
+    Meta() {
+      return metaString();
+    },
+    Close() {
+      return close();
+    },
+  };
+}
+
+function hasObject(value) {
+  return value && (typeof value === "object" || typeof value === "function");
+}
+
+function getFactory() {
+  if (typeof app.New === "function") return app.New.bind(app);
+  if (typeof app.default === "function") return app.default;
+  if (typeof app.default?.New === "function") return app.default.New.bind(app.default);
+  return null;
+}
+
+function getTunnel() {
+  if (hasObject(app.Tunnel)) return app.Tunnel;
+  if (hasObject(app.default?.Tunnel)) return app.default.Tunnel;
+  if (hasObject(app.default) && !getFactory()) return app.default;
+  return null;
+}
+
+const sourceTunnel = getTunnel();
+const sourceFactory = getFactory();
+
+if (sourceTunnel) {
+  module.exports.Tunnel = wrapTunnel(sourceTunnel);
+}
+
+if (sourceFactory) {
+  module.exports.New = async (...args) => wrapTunnel(await sourceFactory(...args));
+}
+
+if (!module.exports.Tunnel && !module.exports.New) {
+  throw new TypeError("dynamic-node wrapper: module does not export Tunnel, New, or default");
+}
+
+module.exports.default = module.exports.Tunnel || { New: module.exports.New };
+`;
+}
+
+async function exists(filePath) {
+  try {
+    await fs.promises.stat(filePath);
+    return true;
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return false;
+    }
+    throw err;
+  }
+}
+
+function looksLikeLocalPath(value) {
+  return (
+    value.startsWith(".") ||
+    value.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    value.startsWith("file:")
+  );
+}
+
+function createNpmSpec(moduleName, version) {
+  if (!version || version === "latest") {
+    return moduleName;
+  }
+  if (
+    moduleName.includes("://") ||
+    moduleName.startsWith("git+") ||
+    moduleName.endsWith(".git")
+  ) {
+    return `${moduleName}#${version}`;
+  }
+  return `${moduleName}@${version}`;
+}
+
+function findInstalledPackageRoot(sourceRoot, moduleName) {
+  const nodeModules = path.join(sourceRoot, "node_modules");
+  const normalized = moduleName.replace(/^npm:/, "");
+  if (normalized.startsWith("@")) {
+    const parts = normalized.split("/");
+    const scoped = path.join(nodeModules, parts[0], parts[1] ?? "");
+    if (fs.existsSync(scoped)) {
+      return scoped;
+    }
+  } else {
+    const first = normalized.split("/", 1)[0];
+    const plain = path.join(nodeModules, first);
+    if (fs.existsSync(plain)) {
+      return plain;
+    }
+  }
+
+  const entries = fs.readdirSync(nodeModules, { withFileTypes: true });
+  const packages = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === ".bin") {
+      continue;
+    }
+    if (entry.name.startsWith("@")) {
+      const scopeDir = path.join(nodeModules, entry.name);
+      for (const scoped of fs.readdirSync(scopeDir, { withFileTypes: true })) {
+        if (scoped.isDirectory()) {
+          packages.push(path.join(scopeDir, scoped.name));
+        }
+      }
+      continue;
+    }
+    packages.push(path.join(nodeModules, entry.name));
+  }
+
+  if (packages.length === 1) {
+    return packages[0];
+  }
+  throw new Error(`cannot determine installed source package root for ${moduleName}`);
+}
+
+function getNetrcFromEnv() {
+  for (const name of ["DYNAMIC_NETRC", "DynamicNetrc", "GIT_NETRC", "GitNetrc", "NPM_NETRC"]) {
+    const value = process.env[name];
+    if (value?.trim()) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function runNpm(args, cwd) {
+  if (process.platform === "win32") {
+    return spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm", ...args], {
+      cwd,
+      stdio: "inherit",
+      shell: false,
+    });
+  }
+
+  return spawnSync("npm", args, {
+    cwd,
+    stdio: "inherit",
+    shell: false,
+  });
 }

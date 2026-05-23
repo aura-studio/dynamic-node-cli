@@ -28,6 +28,9 @@ export async function buildForProcedure(proc) {
   const renderData = {
     name,
     sourcePath: createSourcePath(proc.source.module, proc.source.package),
+    sourceModule: proc.source.module,
+    sourcePackage: proc.source.package,
+    sourceVersion: proc.source.version,
     entry: "index.js",
     version: proc.source.version,
     house: proc.warehouse.local,
@@ -45,6 +48,9 @@ export async function buildForProcedure(proc) {
 function createSourcePath(moduleName, packageName) {
   if (path.isAbsolute(packageName)) {
     return packageName;
+  }
+  if (packageName === ".") {
+    return moduleName;
   }
   return path.join(moduleName, packageName);
 }

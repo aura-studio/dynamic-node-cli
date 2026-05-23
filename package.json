@@ -9,7 +9,12 @@
   },
   "scripts": {
     "start": "node src/main.js",
-    "check": "node --check src/main.js && find src -name '*.js' -print0 | xargs -0 -n1 node --check"
+    "check": "node scripts/check-syntax.js",
+    "test": "node --test",
+    "test:examples": "node examples/scripts/99-run-all-local.js",
+    "test:examples:s3": "node examples/scripts/99-run-all-with-s3.js",
+    "test:examples:s3:docker": "node examples/scripts/99-run-all-docker-s3.js",
+    "test:all": "npm run check && npm test && npm run test:examples"
   },
   "engines": {
     "node": ">=18"

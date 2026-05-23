@@ -1,70 +1,83 @@
-# examples manual test guide
+# dynamic-node-cli examples
 
-这个目录提供一个最小 Node.js 示例工程和一组手动测试脚本。
+This directory contains a small Tunnel package and step-by-step manual tests.
+The recommended scripts are JavaScript entrypoints so they work on Windows,
+macOS, and Linux.
 
-## 默认值
+## Quick local run
 
-脚本默认使用：
+From the repository root:
 
 ```bash
-AWS_PROFILE=aws-3
-AWS_REGION=us-west-1
-DYNAMIC_NODE_TEST_ID=manual
-DYNAMIC_NODE_TEST_REMOTE=s3://dynamic-loader-code-255491288557/dynamic-node-cli-test/manual
+npm run test:examples
 ```
 
-如果要换成自己的测试 bucket：
+This runs the local-only flow:
+
+```bash
+node examples/scripts/00-create-config.js
+node examples/scripts/01-smoke.js
+node examples/scripts/02-toolchain-check.js
+node examples/scripts/03-build-bundle.js
+node examples/scripts/04-build-full.js
+node examples/scripts/05-build-all.js
+node examples/scripts/14-meta.js
+node examples/scripts/08-clean-cache.js
+node examples/scripts/09-clean-useless.js
+node examples/scripts/10-clean-package.js
+node examples/scripts/11-clean-all.js
+```
+
+## S3-compatible Docker run
+
+The S3 flow can run without a real AWS bucket by starting a MinIO container:
+
+```bash
+npm run test:examples:s3:docker
+```
+
+The script starts `minio/minio:latest`, creates a bucket, points the CLI at the
+container through `AWS_ENDPOINT_URL`, runs build/push/pull/meta/clean tests, and
+stops the container when finished.
+
+Useful overrides:
+
+```bash
+set DYNAMIC_NODE_TEST_ID=manual
+set DYNAMIC_NODE_TEST_S3_IMAGE=minio/minio:latest
+set DYNAMIC_NODE_TEST_KEEP_DOCKER=1
+```
+
+On bash shells use `export` instead of `set`.
+
+## Real S3 run
+
+To run against an actual S3 bucket:
 
 ```bash
 export AWS_PROFILE=aws-3
 export AWS_REGION=us-west-1
 export DYNAMIC_NODE_TEST_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 export DYNAMIC_NODE_TEST_REMOTE="s3://your-bucket/dynamic-node-cli-test/${DYNAMIC_NODE_TEST_ID}"
+npm run test:examples:s3
 ```
 
-## 推荐手动顺序
+The S3 script removes the remote prefix at the end unless
+`DYNAMIC_NODE_TEST_KEEP_REMOTE=1` is set.
 
-从仓库根目录逐条执行：
+## Paths
 
-```bash
-./examples/scripts/00-create-config.sh
-./examples/scripts/01-smoke.sh
-./examples/scripts/02-toolchain-check.sh
-./examples/scripts/03-build-bundle.sh
-./examples/scripts/04-build-full.sh
-./examples/scripts/05-build-all.sh
-./examples/scripts/06-push.sh
-./examples/scripts/07-pull.sh
-./examples/scripts/08-clean-cache.sh
-./examples/scripts/09-clean-useless.sh
-./examples/scripts/10-clean-package.sh
-./examples/scripts/11-clean-all.sh
-./examples/scripts/12-install-from-github.sh
-./examples/scripts/13-clean-s3.sh
+Defaults:
+
+```text
+DYNAMIC_NODE_TEST_APP=examples/sample-app
+DYNAMIC_NODE_TEST_WAREHOUSE=examples/warehouse
+DYNAMIC_NODE_TEST_CONFIG=examples/dynamic-node-cli.yaml
+DYNAMIC_NODE_TEST_ID=manual
+DYNAMIC_NODE_TEST_REMOTE=s3://dynamic-node-cli-test/manual
 ```
 
-本地测试不需要 AWS：
-
-```bash
-./examples/scripts/99-run-all-local.sh
-```
-
-包含 S3 push/pull 的完整测试：
-
-```bash
-./examples/scripts/99-run-all-with-s3.sh
-```
-
-`99-run-all-with-s3.sh` 默认会在结束时清理 `DYNAMIC_NODE_TEST_REMOTE` 对应的 S3 前缀。想保留远程产物时：
-
-```bash
-export DYNAMIC_NODE_TEST_KEEP_REMOTE=1
-./examples/scripts/99-run-all-with-s3.sh
-```
-
-## 产物
-
-运行脚本会生成：
+Generated files are ignored by git:
 
 ```text
 examples/dynamic-node-cli.yaml
@@ -73,4 +86,5 @@ examples/sample-app/node_modules/
 examples/sample-app/package-lock.json
 ```
 
-这些文件已被 `examples/.gitignore` 忽略。
+The old `.sh` scripts are kept as bash conveniences, but the `.js` scripts are
+the portable test entrypoints.
