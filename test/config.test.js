@@ -12,6 +12,16 @@ test("config rejects underscores to match dynamic-cli", () => {
   );
 });
 
+test("config rejects dashes in target package names", () => {
+  const config = sampleConfig();
+  config.procedures[0].target.package = "bad-name";
+
+  assert.throws(
+    () => validateConfig(config),
+    /target\.package contains invalid characters/,
+  );
+});
+
 test("config keeps Node bundle and full variants", () => {
   const bundleConfig = sampleConfig();
   validateConfig(bundleConfig);

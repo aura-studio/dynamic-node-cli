@@ -89,10 +89,10 @@ async function stepToolchainCheck(ctx) {
   for (const name of [
     "sample-bundle",
     "sample-full",
-    "service-bundle",
-    "service-full",
-    "wire-bundle",
-    "wire-full",
+    "servicebundle",
+    "servicefull",
+    "wirebundle",
+    "wirefull",
   ]) {
     cli(ctx, ["toolchain", "check", "-c", ctx.configPath, "-p", name]);
   }
@@ -267,7 +267,7 @@ async function stepMeta(ctx) {
 
 async function stepServiceTargets(ctx) {
   ensureBuilt(ctx);
-  for (const targetPackage of ["service-bundle", "service-full"]) {
+  for (const targetPackage of ["servicebundle", "servicefull"]) {
     const tunnel = await loadBuiltTunnel(ctx, targetPackage);
     await callTunnel(tunnel, "init");
     const response = await callTunnel(
@@ -287,7 +287,7 @@ async function stepServiceTargets(ctx) {
 
 async function stepWireTargets(ctx) {
   ensureBuilt(ctx);
-  for (const targetPackage of ["wire-bundle", "wire-full"]) {
+  for (const targetPackage of ["wirebundle", "wirefull"]) {
     const tunnel = await loadBuiltTunnel(ctx, targetPackage);
     await callTunnel(tunnel, "init");
 

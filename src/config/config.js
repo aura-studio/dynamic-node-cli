@@ -8,6 +8,7 @@ export function parseConfig(file) {
 
 export function validateConfig(config) {
   const allowed = /^[A-Za-z0-9.-]+$/;
+  const targetPackageAllowed = /^[A-Za-z0-9.]+$/;
 
   const envNames = new Set();
   if (!Array.isArray(config?.environments) || config.environments.length === 0) {
@@ -97,9 +98,9 @@ export function validateConfig(config) {
         `config: procedures[${i}].target.namespace contains invalid characters`,
       );
     }
-    if (!allowed.test(target.package)) {
+    if (!targetPackageAllowed.test(target.package)) {
       throw new Error(
-        `config: procedures[${i}].target.package contains invalid characters`,
+        `config: procedures[${i}].target.package contains invalid characters (allowed: letters, digits, '.')`,
       );
     }
     if (!allowed.test(target.version)) {

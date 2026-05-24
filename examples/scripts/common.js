@@ -29,10 +29,10 @@ process.once("exit", () => {
 export const TARGET_PACKAGES = [
   "bundle",
   "full",
-  "service-bundle",
-  "service-full",
-  "wire-bundle",
-  "wire-full",
+  "servicebundle",
+  "servicefull",
+  "wirebundle",
+  "wirefull",
 ];
 
 export function createContext(env = process.env) {
@@ -163,7 +163,7 @@ procedures:
       namespace: test
       package: full
       version: ${ctx.testId}
-  - name: service-bundle
+  - name: servicebundle
     environment: bundle-env
     source:
       module: ${serviceApp}
@@ -171,9 +171,9 @@ procedures:
       version: latest
     target:
       namespace: test
-      package: service-bundle
+      package: servicebundle
       version: ${ctx.testId}
-  - name: service-full
+  - name: servicefull
     environment: full-env
     source:
       module: ${serviceApp}
@@ -181,9 +181,9 @@ procedures:
       version: latest
     target:
       namespace: test
-      package: service-full
+      package: servicefull
       version: ${ctx.testId}
-  - name: wire-bundle
+  - name: wirebundle
     environment: bundle-env
     source:
       module: ${wireApp}
@@ -191,9 +191,9 @@ procedures:
       version: latest
     target:
       namespace: test
-      package: wire-bundle
+      package: wirebundle
       version: ${ctx.testId}
-  - name: wire-full
+  - name: wirefull
     environment: full-env
     source:
       module: ${wireApp}
@@ -201,7 +201,7 @@ procedures:
       version: latest
     target:
       namespace: test
-      package: wire-full
+      package: wirefull
       version: ${ctx.testId}
 `;
 
