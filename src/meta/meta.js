@@ -7,13 +7,12 @@ import { extractZip, listZipEntries, readZipEntry } from "./zip.js";
 export const META_FILE = "dynamic-meta.json";
 export const META_KEYS = ["module", "version", "built", "os", "arch", "compiler", "variant"];
 
-export function createBuildMeta(config) {
+export function createBuildMeta(config, { version = "unknown", built } = {}) {
   return {
     dynamic: {
       module: config.sourceModule,
-      package: config.sourcePackage,
-      version: config.sourceVersion,
-      built: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+      version,
+      built: built ?? new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     },
     toolchain: {
       os: config.os,

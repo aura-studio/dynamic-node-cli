@@ -250,8 +250,12 @@ async function stepMeta(ctx) {
     const zipPath = findTargetZip(ctx, targetPackage);
     assert(zipPath, `${targetPackage} zip is required`);
     const variant = targetPackage.endsWith("bundle") || targetPackage === "bundle" ? "bundle" : "full";
-    assert(cliOutput(ctx, ["meta", "read", zipPath]).includes(`variant: ${variant}`), `${targetPackage} meta read failed`);
-    assert(cliOutput(ctx, ["meta", "call", zipPath]).includes(`variant: ${variant}`), `${targetPackage} meta call failed`);
+    const readMeta = JSON.parse(cliOutput(ctx, ["meta", "read", zipPath, "--json"]));
+    const callMeta = JSON.parse(cliOutput(ctx, ["meta", "call", zipPath, "--json"]));
+    assertDynamicMetaShape(readMeta, variant, `${targetPackage} meta read`);
+    assertDynamicMetaShape(callMeta, variant, `${targetPackage} meta call`);
+    console.log(`${targetPackage} meta read: ${JSON.stringify(readMeta)}`);
+    console.log(`${targetPackage} meta call: ${JSON.stringify(callMeta)}`);
   }
 
   const bundleZip = findBundleZip(ctx);
@@ -408,6 +412,17 @@ function decodeEnvelope(raw) {
     meta: envelope.meta || {},
     payload: text ? JSON.parse(text) : null,
   };
+}
+
+function assertDynamicMetaShape(meta, variant, label) {
+  assert(meta.dynamic && typeof meta.dynamic === "object", `${label} dynamic meta missing`);
+  assert(meta.toolchain && typeof meta.toolchain === "object", `${label} toolchain meta missing`);
+  assert(Object.keys(meta.dynamic).sort().join(",") === "built,module,version", `${label} dynamic fields mismatch`);
+  assert(Object.keys(meta.toolchain).sort().join(",") === "arch,compiler,os,variant", `${label} toolchain fields mismatch`);
+  assert(typeof meta.dynamic.module === "string" && meta.dynamic.module, `${label} module missing`);
+  assert(typeof meta.dynamic.version === "string" && meta.dynamic.version, `${label} version missing`);
+  assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(meta.dynamic.built), `${label} built format mismatch`);
+  assert(meta.toolchain.variant === variant, `${label} variant mismatch`);
 }
 
 async function listen(server) {

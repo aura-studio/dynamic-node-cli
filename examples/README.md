@@ -8,6 +8,36 @@ The `service-app` and `wire-app` examples intentionally wrap themselves with
 `@aura-studio/service-node` and `@aura-studio/wire-node` before dynamic-node-cli
 sees them. The CLI still packages a regular Tunnel export.
 
+## Meta contract
+
+`dynamic-node-cli` builds meta at package build time, matching the Go
+`dynamic-cli` model. The target app or Tunnel package should not provide dynamic
+package metadata itself.
+
+Every generated artifact writes `dynamic-meta.json` and wraps `Meta()`/`meta()`
+with this schema:
+
+```json
+{
+  "dynamic": {
+    "module": "examples/sample-app",
+    "version": "1.0.0",
+    "built": "2026-05-24T11:16:03Z"
+  },
+  "toolchain": {
+    "os": "windows10.0.26200.0",
+    "arch": "amd64v1",
+    "compiler": "node26.2.0",
+    "variant": "bundle"
+  }
+}
+```
+
+The `dynamic.version` value is resolved from the source module root
+`package.json`, not from `source.version` and not from a package-level
+`meta()` function. If the module root has no `package.json` version, the value is
+`unknown`.
+
 ## Quick local run
 
 From the repository root:
@@ -33,6 +63,10 @@ node examples/scripts/09-clean-useless.js
 node examples/scripts/10-clean-package.js
 node examples/scripts/11-clean-all.js
 ```
+
+`14-meta` validates `meta read` and `meta call` for all six generated packages:
+sample bundle/full plus service bundle/full and wire bundle/full. It asserts the
+exact Go-aligned fields and prints the HTTP-visible JSON body for manual review.
 
 ## S3-compatible Docker run
 

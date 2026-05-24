@@ -115,7 +115,9 @@ export function writeConfig(ctx) {
   const archValue = cliOutput(ctx, ["toolchain", "describe", "arch"]);
   const compilerValue = cliOutput(ctx, ["toolchain", "describe", "compiler"]);
   const warehouse = toPosix(ctx.warehouseDir);
-  const examples = toPosix(ctx.examplesDir);
+  const sampleApp = toPosix(path.join(ctx.examplesDir, "sample-app"));
+  const serviceApp = toPosix(path.join(ctx.examplesDir, "service-app"));
+  const wireApp = toPosix(path.join(ctx.examplesDir, "wire-app"));
   const remote = ctx.remote;
 
   const content = `environments:
@@ -144,8 +146,8 @@ procedures:
   - name: sample-bundle
     environment: bundle-env
     source:
-      module: ${examples}
-      package: sample-app
+      module: ${sampleApp}
+      package: .
       version: latest
     target:
       namespace: test
@@ -154,8 +156,8 @@ procedures:
   - name: sample-full
     environment: full-env
     source:
-      module: ${examples}
-      package: sample-app
+      module: ${sampleApp}
+      package: .
       version: latest
     target:
       namespace: test
@@ -164,8 +166,8 @@ procedures:
   - name: service-bundle
     environment: bundle-env
     source:
-      module: ${examples}
-      package: service-app
+      module: ${serviceApp}
+      package: .
       version: latest
     target:
       namespace: test
@@ -174,8 +176,8 @@ procedures:
   - name: service-full
     environment: full-env
     source:
-      module: ${examples}
-      package: service-app
+      module: ${serviceApp}
+      package: .
       version: latest
     target:
       namespace: test
@@ -184,8 +186,8 @@ procedures:
   - name: wire-bundle
     environment: bundle-env
     source:
-      module: ${examples}
-      package: wire-app
+      module: ${wireApp}
+      package: .
       version: latest
     target:
       namespace: test
@@ -194,8 +196,8 @@ procedures:
   - name: wire-full
     environment: full-env
     source:
-      module: ${examples}
-      package: wire-app
+      module: ${wireApp}
+      package: .
       version: latest
     target:
       namespace: test

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build as esbuild } from "esbuild";
 import yazl from "yazl";
 import { createBuildMeta, META_FILE, stringifyMeta } from "../meta/meta.js";
@@ -11,6 +12,8 @@ export class Builder {
   constructor(config) {
     this.config = config;
     this.sourcePath = null;
+    this.sourceModuleRoot = null;
+    this.meta = null;
     this.netrcState = null;
   }
 
@@ -22,6 +25,7 @@ export class Builder {
       this.sourcePath = await this.prepareSourcePath();
       this.npmInstall();
       await this.validateTunnel();
+      this.meta = await this.createMeta();
 
       if (this.config.variant === "full") {
         await this.buildFull();
@@ -48,7 +52,7 @@ export class Builder {
   async buildBundle() {
     const srcPath = this.resolveSourcePath();
     const entryPoint = path.join(srcPath, this.config.entry);
-    const meta = this.createMeta();
+    const meta = this.meta ?? await this.createMeta();
     const appBundlePath = path.join(this.config.dir, "dynamic-node-app.cjs");
     const wrapperPath = path.join(this.config.dir, "bundle.js");
 
@@ -86,7 +90,7 @@ export class Builder {
 
   async buildFull() {
     const srcPath = this.resolveSourcePath();
-    const meta = this.createMeta();
+    const meta = this.meta ?? await this.createMeta();
 
     const zipName = `libnode_${this.config.name}.zip`;
     const zipPath = path.join(this.config.dir, zipName);
@@ -114,6 +118,7 @@ export class Builder {
   async prepareSourcePath() {
     const localSourcePath = this.resolveSourcePath();
     if (await exists(localSourcePath)) {
+      this.sourceModuleRoot = this.resolveLocalSourceModuleRoot() ?? localSourcePath;
       return localSourcePath;
     }
 
@@ -138,6 +143,7 @@ export class Builder {
     }
 
     const moduleRoot = findInstalledPackageRoot(sourceRoot, this.config.sourceModule);
+    this.sourceModuleRoot = moduleRoot;
     const packagePath = this.config.sourcePackage === "."
       ? moduleRoot
       : path.join(moduleRoot, this.config.sourcePackage);
@@ -153,8 +159,27 @@ export class Builder {
     await validateTunnelEntry(entryPoint);
   }
 
-  createMeta() {
-    return createBuildMeta(this.config);
+  async createMeta() {
+    const version = await resolveSourceVersion(this.sourceModuleRoot);
+    return createBuildMeta(this.config, { version });
+  }
+
+  resolveLocalSourceModuleRoot() {
+    const moduleName = this.config.sourceModule || "";
+    if (moduleName.startsWith("file:")) {
+      try {
+        const cwd = process.cwd().endsWith(path.sep) ? process.cwd() : `${process.cwd()}${path.sep}`;
+        return fileURLToPath(new URL(moduleName, pathToFileURL(cwd)));
+      } catch {
+        return null;
+      }
+    }
+    if (path.isAbsolute(moduleName)) {
+      return moduleName;
+    }
+
+    const candidate = path.join(process.cwd(), moduleName);
+    return fs.existsSync(candidate) ? candidate : null;
   }
 
   async createBundleZip(zipPath, meta) {
@@ -280,6 +305,18 @@ async function addDirectoryToZip(zipfile, rootDir, currentDir) {
       continue;
     }
 
+    if (entry.isSymbolicLink()) {
+      const stat = await fs.promises.stat(fullPath);
+      if (stat.isDirectory()) {
+        zipfile.addEmptyDirectory(`${rel}/`);
+        await addDirectoryToZip(zipfile, rootDir, fullPath);
+        continue;
+      }
+
+      zipfile.addFile(fullPath, rel);
+      continue;
+    }
+
     if (entry.isDirectory()) {
       zipfile.addEmptyDirectory(`${rel}/`);
       await addDirectoryToZip(zipfile, rootDir, fullPath);
@@ -314,6 +351,15 @@ async function copyDirectory(srcDir, destDir) {
 
     const src = path.join(srcDir, entry.name);
     const dest = path.join(destDir, entry.name);
+    if (entry.isSymbolicLink()) {
+      const stat = await fs.promises.stat(src);
+      if (stat.isDirectory()) {
+        await copyDirectory(src, dest);
+        continue;
+      }
+      await fs.promises.copyFile(src, dest);
+      continue;
+    }
     if (entry.isDirectory()) {
       await copyDirectory(src, dest);
       continue;
@@ -333,6 +379,24 @@ async function readPackageInfo(srcDir) {
     packageJson,
     main: packageJson.main || "index.js",
   };
+}
+
+async function resolveSourceVersion(moduleRoot) {
+  if (!moduleRoot) {
+    return "unknown";
+  }
+
+  // Match the Go builder's ownership model: dynamic.version belongs to the
+  // source module resolved by the builder, not to a package-level Tunnel meta.
+  const packageJsonPath = path.join(moduleRoot, "package.json");
+  if (!(await exists(packageJsonPath))) {
+    return "unknown";
+  }
+
+  const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, "utf8"));
+  return typeof packageJson.version === "string" && packageJson.version.trim()
+    ? packageJson.version
+    : "unknown";
 }
 
 function createCjsWrapper(appRequire, meta) {
@@ -396,6 +460,7 @@ function getTunnel() {
   if (hasObject(app.Tunnel)) return app.Tunnel;
   if (hasObject(app.default?.Tunnel)) return app.default.Tunnel;
   if (hasObject(app.default) && !getFactory()) return app.default;
+  if (hasObject(app) && !getFactory()) return app;
   return null;
 }
 
