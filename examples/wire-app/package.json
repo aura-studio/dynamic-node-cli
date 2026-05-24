@@ -1,0 +1,14 @@
+{
+  "name": "dynamic-node-cli-wire-example",
+  "version": "1.0.0",
+  "description": "wire-node wrapped target for dynamic-node-cli manual tests",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@aura-studio/tunnel-node": "file:../../../tunnel-node",
+    "@aura-studio/wire-node": "file:../../../wire-node"
+  }
+}

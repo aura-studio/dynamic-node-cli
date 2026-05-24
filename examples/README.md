@@ -1,8 +1,12 @@
 # dynamic-node-cli examples
 
-This directory contains a small Tunnel package and step-by-step manual tests.
+This directory contains small Tunnel packages and step-by-step manual tests.
 The recommended scripts are JavaScript entrypoints so they work on Windows,
 macOS, and Linux.
+
+The `service-app` and `wire-app` examples intentionally wrap themselves with
+`@aura-studio/service-node` and `@aura-studio/wire-node` before dynamic-node-cli
+sees them. The CLI still packages a regular Tunnel export.
 
 ## Quick local run
 
@@ -22,6 +26,8 @@ node examples/scripts/03-build-bundle.js
 node examples/scripts/04-build-full.js
 node examples/scripts/05-build-all.js
 node examples/scripts/14-meta.js
+node examples/scripts/15-service.js
+node examples/scripts/16-wire.js
 node examples/scripts/08-clean-cache.js
 node examples/scripts/09-clean-useless.js
 node examples/scripts/10-clean-package.js
@@ -82,9 +88,11 @@ Generated files are ignored by git:
 ```text
 examples/dynamic-node-cli.yaml
 examples/warehouse/
+examples/.npm-cache/
 examples/sample-app/node_modules/
 examples/sample-app/package-lock.json
+examples/service-app/node_modules/
+examples/service-app/package-lock.json
+examples/wire-app/node_modules/
+examples/wire-app/package-lock.json
 ```
-
-The old `.sh` scripts are kept as bash conveniences, but the `.js` scripts are
-the portable test entrypoints.

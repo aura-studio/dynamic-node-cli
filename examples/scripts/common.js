@@ -1,8 +1,11 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { extractZip } from "../../src/meta/zip.js";
 import {
   CreateBucketCommand,
   DeleteBucketCommand,
@@ -14,11 +17,39 @@ import {
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLES_DIR = path.dirname(SCRIPT_DIR);
 const REPO_ROOT = path.dirname(EXAMPLES_DIR);
+const requireBuilt = createRequire(import.meta.url);
+const extractedArtifacts = [];
+
+process.once("exit", () => {
+  for (const dir of extractedArtifacts) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+export const TARGET_PACKAGES = [
+  "bundle",
+  "full",
+  "service-bundle",
+  "service-full",
+  "wire-bundle",
+  "wire-full",
+];
 
 export function createContext(env = process.env) {
   const testId = env.DYNAMIC_NODE_TEST_ID || "manual";
+  const npmCache = env.DYNAMIC_NODE_TEST_NPM_CACHE || path.join(EXAMPLES_DIR, ".npm-cache");
+  const childEnv = { ...env };
+  for (const key of Object.keys(childEnv)) {
+    if (key.toLowerCase() === "npm_config_cache") {
+      delete childEnv[key];
+    }
+  }
   return {
-    env: { ...env },
+    env: {
+      ...childEnv,
+      npm_config_cache: npmCache,
+      NPM_CONFIG_CACHE: npmCache,
+    },
     scriptDir: SCRIPT_DIR,
     examplesDir: EXAMPLES_DIR,
     repoRoot: REPO_ROOT,
@@ -130,6 +161,46 @@ procedures:
       namespace: test
       package: full
       version: ${ctx.testId}
+  - name: service-bundle
+    environment: bundle-env
+    source:
+      module: ${examples}
+      package: service-app
+      version: latest
+    target:
+      namespace: test
+      package: service-bundle
+      version: ${ctx.testId}
+  - name: service-full
+    environment: full-env
+    source:
+      module: ${examples}
+      package: service-app
+      version: latest
+    target:
+      namespace: test
+      package: service-full
+      version: ${ctx.testId}
+  - name: wire-bundle
+    environment: bundle-env
+    source:
+      module: ${examples}
+      package: wire-app
+      version: latest
+    target:
+      namespace: test
+      package: wire-bundle
+      version: ${ctx.testId}
+  - name: wire-full
+    environment: full-env
+    source:
+      module: ${examples}
+      package: wire-app
+      version: latest
+    target:
+      namespace: test
+      package: wire-full
+      version: ${ctx.testId}
 `;
 
   fs.mkdirSync(path.dirname(ctx.configPath), { recursive: true });
@@ -146,7 +217,7 @@ export function ensureConfig(ctx) {
 
 export function ensureBuilt(ctx) {
   ensureConfig(ctx);
-  if (!hasZipArtifact(ctx)) {
+  if (!hasAllTargetZips(ctx)) {
     cli(ctx, ["build", "-c", ctx.configPath]);
   }
 }
@@ -155,12 +226,63 @@ export function hasZipArtifact(ctx) {
   return findArtifacts(ctx, "libnode_test_*.zip").length > 0;
 }
 
+export function hasAllTargetZips(ctx) {
+  return TARGET_PACKAGES.every((targetPackage) => Boolean(findTargetZip(ctx, targetPackage)));
+}
+
 export function findBundleZip(ctx) {
   return findFirst(ctx, `libnode_test_bundle_${ctx.testId}.zip`);
 }
 
 export function findFullZip(ctx) {
   return findFirst(ctx, `libnode_test_full_${ctx.testId}.zip`);
+}
+
+export function findTargetZip(ctx, targetPackage) {
+  return findFirst(ctx, `libnode_test_${targetPackage}_${ctx.testId}.zip`);
+}
+
+export function assertAllTargetZips(ctx) {
+  for (const targetPackage of TARGET_PACKAGES) {
+    assert(findTargetZip(ctx, targetPackage), `${targetPackage} zip was not created`);
+  }
+}
+
+export async function loadBuiltTunnel(ctx, targetPackage) {
+  const zipPath = findTargetZip(ctx, targetPackage);
+  assert(zipPath, `${targetPackage} zip is required`);
+
+  const dir = path.dirname(zipPath);
+  const entry = await resolveArtifactEntry(zipPath, dir, targetPackage);
+  const mod = requireBuilt(entry);
+  if (isObject(mod.Tunnel)) return mod.Tunnel;
+  if (typeof mod.New === "function") return await mod.New();
+  if (isObject(mod.default?.Tunnel)) return mod.default.Tunnel;
+  if (typeof mod.default?.New === "function") return await mod.default.New();
+  if (isObject(mod.default)) return mod.default;
+  throw new Error(`${targetPackage} artifact does not export Tunnel or New`);
+}
+
+async function resolveArtifactEntry(zipPath, dir, targetPackage) {
+  const stagedEntry = findLoadableEntry(dir);
+  if (stagedEntry) {
+    return stagedEntry;
+  }
+
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), `dynamic-node-cli-${targetPackage}-`));
+  extractedArtifacts.push(tmpDir);
+  await extractZip(zipPath, tmpDir);
+  return findLoadableEntry(tmpDir) || tmpDir;
+}
+
+function findLoadableEntry(dir) {
+  if (fs.existsSync(path.join(dir, "bundle.js"))) {
+    return path.join(dir, "bundle.js");
+  }
+  if (fs.existsSync(path.join(dir, "package.json"))) {
+    return dir;
+  }
+  return "";
 }
 
 export function findArtifacts(ctx, pattern) {
@@ -371,6 +493,10 @@ function parseS3Uri(value) {
 function findFirst(ctx, name) {
   const matches = findArtifacts(ctx, name);
   return matches[0] || "";
+}
+
+function isObject(value) {
+  return Boolean(value && (typeof value === "object" || typeof value === "function"));
 }
 
 function walk(root, visit) {

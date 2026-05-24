@@ -1,0 +1,14 @@
+{
+  "name": "dynamic-node-cli-service-example",
+  "version": "1.0.0",
+  "description": "service-node wrapped target for dynamic-node-cli manual tests",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@aura-studio/service-node": "file:../../../service-node",
+    "@aura-studio/tunnel-node": "file:../../../tunnel-node"
+  }
+}

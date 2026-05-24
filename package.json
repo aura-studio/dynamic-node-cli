@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/main.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node --test",
+    "test": "node --test test/**/*.test.js",
     "test:examples": "node examples/scripts/99-run-all-local.js",
     "test:examples:s3": "node examples/scripts/99-run-all-with-s3.js",
     "test:examples:s3:docker": "node examples/scripts/99-run-all-docker-s3.js",

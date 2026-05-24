@@ -1,8 +1,10 @@
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assert,
+  assertAllTargetZips,
   cleanupRemote,
   cli,
   cliOutput,
@@ -12,13 +14,16 @@ import {
   ensureDependencies,
   findBundleZip,
   findFullZip,
+  findTargetZip,
   hasZipArtifact,
   listArtifacts,
   listRemoteKeys,
+  loadBuiltTunnel,
   removePath,
   run,
   runNpm,
   startDockerS3,
+  TARGET_PACKAGES,
   writeConfig,
 } from "./common.js";
 
@@ -38,6 +43,8 @@ const steps = new Map([
   ["12-install-from-github", stepInstallFromGithub],
   ["13-clean-s3", stepCleanS3],
   ["14-meta", stepMeta],
+  ["15-service", stepServiceTargets],
+  ["16-wire", stepWireTargets],
   ["99-run-all-local", runAllLocal],
   ["99-run-all-with-s3", runAllWithS3],
   ["99-run-all-docker-s3", runAllWithDockerS3],
@@ -79,8 +86,16 @@ async function stepSmoke(ctx) {
 
 async function stepToolchainCheck(ctx) {
   ensureConfig(ctx);
-  cli(ctx, ["toolchain", "check", "-c", ctx.configPath, "-p", "sample-bundle"]);
-  cli(ctx, ["toolchain", "check", "-c", ctx.configPath, "-p", "sample-full"]);
+  for (const name of [
+    "sample-bundle",
+    "sample-full",
+    "service-bundle",
+    "service-full",
+    "wire-bundle",
+    "wire-full",
+  ]) {
+    cli(ctx, ["toolchain", "check", "-c", ctx.configPath, "-p", name]);
+  }
   console.log("toolchain check passed");
 }
 
@@ -104,35 +119,64 @@ async function stepBuildAll(ctx) {
   ensureConfig(ctx);
   cli(ctx, ["build", "-c", ctx.configPath]);
   listArtifacts(ctx);
-  assert(findBundleZip(ctx), "bundle zip was not created");
-  assert(findFullZip(ctx), "full zip was not created");
+  assertAllTargetZips(ctx);
   console.log("build all test passed");
 }
 
 async function stepPush(ctx) {
   ensureBuilt(ctx);
-  assert(
-    ctx.remoteWasExplicit || ctx.env.AWS_ENDPOINT_URL || ctx.env.AWS_ENDPOINT_URL_S3,
-    "set DYNAMIC_NODE_TEST_REMOTE for real S3, or use 99-run-all-docker-s3",
-  );
-  cli(ctx, ["push", "-c", ctx.configPath]);
-  const keys = await listRemoteKeys(ctx);
-  assert(keys.some((key) => key.endsWith(`libnode_test_bundle_${ctx.testId}.zip`)), "remote bundle zip missing");
-  assert(keys.some((key) => key.endsWith(`libnode_test_full_${ctx.testId}.zip`)), "remote full zip missing");
-  for (const key of keys) {
-    console.log(key);
+  const hasS3Config = ctx.remoteWasExplicit || ctx.env.AWS_ENDPOINT_URL || ctx.env.AWS_ENDPOINT_URL_S3;
+  let docker = null;
+  let runCtx = ctx;
+  if (!hasS3Config) {
+    docker = await startDockerS3(ctx);
+    runCtx = docker.ctx;
+    console.log(`docker s3 endpoint: ${docker.endpoint}`);
   }
-  console.log("push test passed");
+  try {
+    cli(runCtx, ["push", "-c", runCtx.configPath]);
+    const keys = await listRemoteKeys(runCtx);
+    for (const targetPackage of TARGET_PACKAGES) {
+      assert(
+        keys.some((key) => key.endsWith(`libnode_test_${targetPackage}_${runCtx.testId}.zip`)),
+        `remote ${targetPackage} zip missing`,
+      );
+    }
+    for (const key of keys) {
+      console.log(key);
+    }
+    console.log("push test passed");
+  } finally {
+    if (docker && ctx.env.DYNAMIC_NODE_TEST_KEEP_DOCKER !== "1") {
+      try { docker.stop(); } catch (err) { console.error(`warning: docker stop failed: ${err.message}`); }
+    }
+  }
 }
 
 async function stepPull(ctx) {
-  ensureConfig(ctx);
-  removePath(ctx.warehouseDir);
-  cli(ctx, ["pull", "-c", ctx.configPath, "--force"]);
-  assert(findBundleZip(ctx), "bundle zip was not pulled");
-  assert(findFullZip(ctx), "full zip was not pulled");
-  listArtifacts(ctx);
-  console.log("pull test passed");
+  const hasS3Config = ctx.remoteWasExplicit || ctx.env.AWS_ENDPOINT_URL || ctx.env.AWS_ENDPOINT_URL_S3;
+  let docker = null;
+  let runCtx = ctx;
+  if (!hasS3Config) {
+    ensureBuilt(ctx);
+    docker = await startDockerS3(ctx);
+    runCtx = docker.ctx;
+    console.log(`docker s3 endpoint: ${docker.endpoint}`);
+    cli(runCtx, ["push", "-c", runCtx.configPath]);
+  } else {
+    ensureConfig(ctx);
+  }
+  try {
+    removePath(runCtx.warehouseDir);
+    cli(runCtx, ["pull", "-c", runCtx.configPath, "--force"]);
+    assertAllTargetZips(runCtx);
+    listArtifacts(runCtx);
+    console.log("pull test passed");
+  } finally {
+    if (docker && ctx.env.DYNAMIC_NODE_TEST_KEEP_DOCKER !== "1") {
+      try { docker.stop(); } catch (err) { console.error(`warning: docker stop failed: ${err.message}`); }
+    }
+  }
 }
 
 async function stepCleanCache(ctx) {
@@ -176,35 +220,98 @@ async function stepCleanAll(ctx) {
 }
 
 async function stepInstallFromGithub(ctx) {
-  const script = path.join(ctx.repoRoot, "scripts", "install-from-github.sh");
-  assert(fs.existsSync(script), "install-from-github.sh not found");
-  if (process.platform === "win32") {
-    console.log("github install script is bash-only; skipped on Windows");
-    return;
-  }
-  run("bash", [script], { cwd: ctx.repoRoot, env: ctx.env });
+  runNpm(["install", "-g", "--force", "github:aura-studio/dynamic-node-cli"], { cwd: ctx.repoRoot, env: ctx.env });
   cli(ctx, ["version"]);
   console.log("github install test passed");
 }
 
 async function stepCleanS3(ctx) {
-  await cleanupRemote(ctx);
-  console.log("s3 cleanup test passed");
+  const hasS3Config = ctx.remoteWasExplicit || ctx.env.AWS_ENDPOINT_URL || ctx.env.AWS_ENDPOINT_URL_S3;
+  let docker = null;
+  let runCtx = ctx;
+  if (!hasS3Config) {
+    docker = await startDockerS3(ctx);
+    runCtx = docker.ctx;
+    console.log(`docker s3 endpoint: ${docker.endpoint}`);
+  }
+  try {
+    await cleanupRemote(runCtx);
+    console.log("s3 cleanup test passed");
+  } finally {
+    if (docker && ctx.env.DYNAMIC_NODE_TEST_KEEP_DOCKER !== "1") {
+      try { docker.stop(); } catch (err) { console.error(`warning: docker stop failed: ${err.message}`); }
+    }
+  }
 }
 
 async function stepMeta(ctx) {
   ensureBuilt(ctx);
+  for (const targetPackage of TARGET_PACKAGES) {
+    const zipPath = findTargetZip(ctx, targetPackage);
+    assert(zipPath, `${targetPackage} zip is required`);
+    const variant = targetPackage.endsWith("bundle") || targetPackage === "bundle" ? "bundle" : "full";
+    assert(cliOutput(ctx, ["meta", "read", zipPath]).includes(`variant: ${variant}`), `${targetPackage} meta read failed`);
+    assert(cliOutput(ctx, ["meta", "call", zipPath]).includes(`variant: ${variant}`), `${targetPackage} meta call failed`);
+  }
+
   const bundleZip = findBundleZip(ctx);
   const fullZip = findFullZip(ctx);
-  assert(bundleZip, "bundle zip is required");
-  assert(fullZip, "full zip is required");
-  assert(cliOutput(ctx, ["meta", "read", bundleZip]).includes("variant: bundle"), "bundle meta read failed");
-  assert(cliOutput(ctx, ["meta", "call", bundleZip]).includes("variant: bundle"), "bundle meta call failed");
-  assert(cliOutput(ctx, ["meta", "read", fullZip]).includes("variant: full"), "full meta read failed");
-  assert(cliOutput(ctx, ["meta", "call", fullZip]).includes("variant: full"), "full meta call failed");
   assert(cliOutput(ctx, ["meta", "nm", bundleZip]).includes("dynamic-meta.json"), "meta nm failed");
   assert(cliOutput(ctx, ["meta", "objdump", fullZip]).includes("dynamic-node-entry.cjs"), "meta objdump failed");
   console.log("meta test passed");
+}
+
+async function stepServiceTargets(ctx) {
+  ensureBuilt(ctx);
+  for (const targetPackage of ["service-bundle", "service-full"]) {
+    const tunnel = await loadBuiltTunnel(ctx, targetPackage);
+    await callTunnel(tunnel, "init");
+    const response = await callTunnel(
+      tunnel,
+      "invoke",
+      "/greet-user",
+      encodeEnvelope({ name: targetPackage }),
+    );
+    const envelope = decodeEnvelope(response);
+    assert(envelope.meta.handler === "greetUser", `${targetPackage} service handler meta mismatch`);
+    assert(envelope.payload.message === `hello ${targetPackage}`, `${targetPackage} service payload mismatch`);
+    assert(envelope.payload.route === "/greet-user", `${targetPackage} service route mismatch`);
+    await callTunnel(tunnel, "close");
+  }
+  console.log("service target tests passed");
+}
+
+async function stepWireTargets(ctx) {
+  ensureBuilt(ctx);
+  for (const targetPackage of ["wire-bundle", "wire-full"]) {
+    const tunnel = await loadBuiltTunnel(ctx, targetPackage);
+    await callTunnel(tunnel, "init");
+
+    const server = http.createServer(async (req, res) => {
+      try {
+        await callTunnel(tunnel, "invoke", "/wire", { req, res });
+      } catch (err) {
+        res.statusCode = 500;
+        res.end(err && err.stack ? err.stack : String(err));
+      }
+    });
+
+    try {
+      const baseUrl = await listen(server);
+      const response = await fetch(`${baseUrl}/hello?case=${encodeURIComponent(targetPackage)}`, {
+        headers: { "x-dynamic-node-target": targetPackage },
+      });
+      const body = await response.json();
+      assert(response.status === 200, `${targetPackage} wire status mismatch`);
+      assert(body.message === "hello wire-node", `${targetPackage} wire message mismatch`);
+      assert(body.method === "GET", `${targetPackage} wire method mismatch`);
+      assert(body.target === targetPackage, `${targetPackage} wire header mismatch`);
+    } finally {
+      await closeServer(server);
+      await callTunnel(tunnel, "close");
+    }
+  }
+  console.log("wire target tests passed");
 }
 
 async function runAllLocal(ctx) {
@@ -216,6 +323,8 @@ async function runAllLocal(ctx) {
     "04-build-full",
     "05-build-all",
     "14-meta",
+    "15-service",
+    "16-wire",
     "08-clean-cache",
     "09-clean-useless",
     "10-clean-package",
@@ -236,6 +345,8 @@ async function runAllWithS3(ctx) {
       "06-push",
       "07-pull",
       "14-meta",
+      "15-service",
+      "16-wire",
       "08-clean-cache",
       "09-clean-useless",
       "10-clean-package",
@@ -272,4 +383,47 @@ async function runAllWithDockerS3(ctx) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await main("99-run-all-local");
+}
+
+async function callTunnel(tunnel, lower, ...args) {
+  const upper = lower[0].toUpperCase() + lower.slice(1);
+  const fn = typeof tunnel[lower] === "function" ? tunnel[lower] : tunnel[upper];
+  if (typeof fn !== "function") {
+    throw new Error(`tunnel does not implement ${lower}/${upper}`);
+  }
+  return await fn.apply(tunnel, args);
+}
+
+function encodeEnvelope(payload, meta = {}) {
+  return JSON.stringify({
+    meta,
+    data: Buffer.from(JSON.stringify(payload)).toString("base64"),
+  });
+}
+
+function decodeEnvelope(raw) {
+  const envelope = JSON.parse(raw || "{}");
+  const text = Buffer.from(envelope.data || "", "base64").toString("utf8");
+  return {
+    meta: envelope.meta || {},
+    payload: text ? JSON.parse(text) : null,
+  };
+}
+
+async function listen(server) {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address();
+  return `http://127.0.0.1:${port}`;
+}
+
+async function closeServer(server) {
+  if (!server.listening) {
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
 }
