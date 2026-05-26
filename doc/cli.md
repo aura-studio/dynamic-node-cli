@@ -54,7 +54,7 @@ procedures:
     environment: default
     source:
       module: ./src            # 模块根目录或仓库路径
-      package: app             # 模块内包路径，入口固定为 index.js
+      package: app             # 模块内包路径，入口按目录解析
       version: latest
     target:
       namespace: myteam
@@ -85,6 +85,7 @@ procedures:
 | `source.module` | 模块根目录或仓库路径 | `./src`、`codeup.aliyun.com/mirror/scp/scp-api/notification` |
 | `source.package` | 模块内包路径 | `app`、`module/admin` |
 | `source.version` | 版本标签 | `latest`、`1.0.0` |
+| `source.entry` | 可选入口文件，未配置时按目录解析 | `tunnel.js` |
 | `target.namespace` | 产物命名空间 | `myteam` |
 | `target.package` | 产物包名 | `app` |
 | `target.version` | 产物版本号 | `v1.0.0` |
@@ -114,7 +115,10 @@ dynamic-node build [-c <config>] [-p <procedure>]
 
 **构建流程取决于 `variant`：**
 
-- **`bundle`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 通过 esbuild 将 `index.js` bundle 为单个 `bundle.js` -> 打包为 zip
+- **`bundle`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 从目录解析入口后通过 esbuild bundle 为单个 `bundle.js` -> 打包为 zip
+
+入口解析顺序为：`source.entry`（如配置了） -> `package.json` 的 `main` -> `tunnel.js` -> `index.js`。
+
 - **`full`**：在 `<source.module>/<source.package>` 执行 `npm install` -> 将整个项目目录（含 `node_modules`）打包为 zip
 
 构建前会自动检查当前机器的 OS、Arch、Compiler 是否匹配配置，不匹配则跳过。

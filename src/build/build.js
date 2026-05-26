@@ -31,7 +31,7 @@ export async function buildForProcedure(proc) {
     sourceModule: proc.source.module,
     sourcePackage: proc.source.package,
     sourceVersion: proc.source.version,
-    entry: "index.js",
+    entry: proc.source.entry,
     version: proc.source.version,
     house: proc.warehouse.local,
     environment,

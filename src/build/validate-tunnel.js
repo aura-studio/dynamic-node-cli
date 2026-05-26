@@ -1,8 +1,10 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolveEntryPath } from "./entry.js";
 
 export async function validateTunnelEntry(entryPoint) {
-  const mod = await import(pathToFileURL(path.resolve(entryPoint)).href);
+  const entry = await resolveEntryPath(entryPoint);
+  const mod = await import(pathToFileURL(path.resolve(entry.absolute)).href);
   const tunnel = await resolveTunnel(mod);
 
   if (!hasCoreTunnelMethods(tunnel)) {

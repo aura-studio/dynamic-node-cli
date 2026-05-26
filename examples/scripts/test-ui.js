@@ -42,7 +42,7 @@ const STEPS = [
     id: "03-build-bundle",
     name: "03 Bundle 构建",
     category: "构建",
-    desc: "使用 esbuild 将 sample-app 的入口文件 (index.js) 打包为单文件 CJS 模块，封装为 Tunnel 接口（Init/Invoke/Meta/Close），内置 dynamic-meta.json 元数据文件，最终生成 libnode_test_bundle_xxx.zip。\n\nBundle 模式下 node_modules 被 tree-shake，产物体积小，适合生产部署。",
+    desc: "使用 esbuild 将 sample-app 目录解析到的入口文件打包为单文件 CJS 模块，封装为 Tunnel 接口（Init/Invoke/Meta/Close），内置 dynamic-meta.json 元数据文件，最终生成 libnode_test_bundle_xxx.zip。\n\nBundle 模式下 node_modules 被 tree-shake，产物体积小，适合生产部署。",
     needsS3: false,
     needsBuild: false,
     isSuite: false,

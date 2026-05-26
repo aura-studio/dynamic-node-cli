@@ -59,7 +59,7 @@ test("build meta uses source module version and overrides package meta", async (
       "utf8",
     );
     await fs.promises.writeFile(
-      path.join(appDir, "index.js"),
+      path.join(appDir, "tunnel.js"),
       `"use strict";
 module.exports = {
   init() {},
@@ -84,7 +84,6 @@ module.exports = {
         sourceModule: moduleRoot,
         sourcePackage: "app",
         sourceVersion: "latest",
-        entry: "index.js",
         version: "latest",
         house: path.join(dir, "warehouse"),
         environment: `test_${variant}`,

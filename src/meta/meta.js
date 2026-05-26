@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolveEntryPath } from "../build/entry.js";
 import { extractZip, listZipEntries, readZipEntry } from "./zip.js";
 
 export const META_FILE = "dynamic-meta.json";
@@ -121,12 +122,12 @@ async function callMetaFromDirectory(dir) {
 
   const packageJsonPath = path.join(dir, "package.json");
   if (await exists(packageJsonPath)) {
-    const pkg = JSON.parse(await fs.promises.readFile(packageJsonPath, "utf8"));
-    const mainFile = pkg.main || "index.js";
-    return callMetaFromFile(path.join(dir, mainFile));
+    const entry = await resolveEntryPath(dir);
+    return callMetaFromFile(entry.absolute);
   }
 
-  return callMetaFromFile(path.join(dir, "index.js"));
+  const entry = await resolveEntryPath(dir);
+  return callMetaFromFile(entry.absolute);
 }
 
 async function callMetaFromFile(filePath) {

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build as esbuild } from "esbuild";
 import yazl from "yazl";
 import { createBuildMeta, META_FILE, stringifyMeta } from "../meta/meta.js";
+import { resolveEntryPath } from "./entry.js";
 import { validateTunnelEntry } from "./validate-tunnel.js";
 
 export class Builder {
@@ -13,6 +14,7 @@ export class Builder {
     this.config = config;
     this.sourcePath = null;
     this.sourceModuleRoot = null;
+    this.entry = null;
     this.meta = null;
     this.netrcState = null;
   }
@@ -50,16 +52,15 @@ export class Builder {
   }
 
   async buildBundle() {
-    const srcPath = this.resolveSourcePath();
-    const entryPoint = path.join(srcPath, this.config.entry);
+    const entry = await this.resolveEntry();
     const meta = this.meta ?? await this.createMeta();
     const appBundlePath = path.join(this.config.dir, "dynamic-node-app.cjs");
     const wrapperPath = path.join(this.config.dir, "bundle.js");
 
-    console.log(`esbuild bundle ${entryPoint}`);
+    console.log(`esbuild bundle ${entry.absolute}`);
 
     await esbuild({
-      entryPoints: [entryPoint],
+      entryPoints: [entry.absolute],
       bundle: true,
       outfile: appBundlePath,
       platform: "node",
@@ -154,9 +155,9 @@ export class Builder {
   }
 
   async validateTunnel() {
-    const entryPoint = path.join(this.resolveSourcePath(), this.config.entry);
-    console.log(`validate tunnel ${entryPoint}`);
-    await validateTunnelEntry(entryPoint);
+    const entry = await this.resolveEntry();
+    console.log(`validate tunnel ${entry.absolute}`);
+    await validateTunnelEntry(entry.absolute);
   }
 
   async createMeta() {
@@ -194,9 +195,10 @@ export class Builder {
   }
 
   async createFullZip(zipPath, srcDir, meta) {
+    const entry = await this.resolveEntry();
     const packageInfo = await readPackageInfo(srcDir);
     const entryFile = "dynamic-node-entry.cjs";
-    const appRequire = `./${toZipPath(packageInfo.main || "index.js")}`;
+    const appRequire = `./${toZipPath(entry.relative)}`;
     const packageJson = {
       ...packageInfo.packageJson,
       main: entryFile,
@@ -211,6 +213,7 @@ export class Builder {
   }
 
   async stageFullDirectory(srcDir, meta) {
+    const entry = await this.resolveEntry();
     await copyDirectory(srcDir, this.config.dir);
     const packageInfo = await readPackageInfo(srcDir);
     const entryFile = "dynamic-node-entry.cjs";
@@ -221,7 +224,7 @@ export class Builder {
 
     await fs.promises.writeFile(
       path.join(this.config.dir, entryFile),
-      createCjsWrapper(`./${toZipPath(packageInfo.main || "index.js")}`, meta),
+      createCjsWrapper(`./${toZipPath(entry.relative)}`, meta),
       "utf8",
     );
     await fs.promises.writeFile(
@@ -272,6 +275,15 @@ export class Builder {
       await fs.promises.rm(netrcPath, { force: true });
     }
     this.netrcState = null;
+  }
+
+  async resolveEntry() {
+    if (!this.entry) {
+      this.entry = await resolveEntryPath(this.resolveSourcePath(), {
+        entry: this.config.entry,
+      });
+    }
+    return this.entry;
   }
 }
 
@@ -371,13 +383,12 @@ async function copyDirectory(srcDir, destDir) {
 async function readPackageInfo(srcDir) {
   const packageJsonPath = path.join(srcDir, "package.json");
   if (!(await exists(packageJsonPath))) {
-    return { packageJson: { type: "commonjs" }, main: "index.js" };
+    return { packageJson: { type: "commonjs" } };
   }
 
   const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, "utf8"));
   return {
     packageJson,
-    main: packageJson.main || "index.js",
   };
 }
 
