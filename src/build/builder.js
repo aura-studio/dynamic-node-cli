@@ -666,5 +666,8 @@ function withNpmDefaults(args) {
   if (!args.includes("--no-fund")) {
     additions.push("--no-fund");
   }
+  if (!args.includes("--legacy-peer-deps")) {
+    additions.push("--legacy-peer-deps");
+  }
   return [...args, ...additions];
 }
