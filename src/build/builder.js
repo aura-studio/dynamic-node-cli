@@ -636,17 +636,35 @@ function getNetrcFromEnv() {
 }
 
 function runNpm(args, cwd) {
+  const finalArgs = withNpmDefaults(args);
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
   if (process.platform === "win32") {
-    return spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm", ...args], {
+    return spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm", ...finalArgs], {
       cwd,
       stdio: "inherit",
       shell: false,
+      env,
     });
   }
 
-  return spawnSync("npm", args, {
+  return spawnSync("npm", finalArgs, {
     cwd,
     stdio: "inherit",
     shell: false,
+    env,
   });
+}
+
+function withNpmDefaults(args) {
+  const additions = [];
+  if (!args.some((a) => a === "--loglevel" || a.startsWith("--loglevel="))) {
+    additions.push("--loglevel=http");
+  }
+  if (!args.includes("--no-audit")) {
+    additions.push("--no-audit");
+  }
+  if (!args.includes("--no-fund")) {
+    additions.push("--no-fund");
+  }
+  return [...args, ...additions];
 }
