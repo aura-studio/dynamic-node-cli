@@ -516,6 +516,13 @@ function looksLikeLocalPath(value) {
 }
 
 function createNpmSpec(moduleName, version) {
+  if (looksLikeHostPath(moduleName)) {
+    const gitUrl = `git+https://${moduleName}.git`;
+    if (!version || version === "latest") {
+      return gitUrl;
+    }
+    return `${gitUrl}#${version}`;
+  }
   if (!version || version === "latest") {
     return moduleName;
   }
@@ -527,6 +534,27 @@ function createNpmSpec(moduleName, version) {
     return `${moduleName}#${version}`;
   }
   return `${moduleName}@${version}`;
+}
+
+function looksLikeHostPath(moduleName) {
+  if (!moduleName) {
+    return false;
+  }
+  if (
+    moduleName.includes("://") ||
+    moduleName.startsWith("git+") ||
+    moduleName.endsWith(".git") ||
+    moduleName.startsWith("@") ||
+    looksLikeLocalPath(moduleName)
+  ) {
+    return false;
+  }
+  const slashIdx = moduleName.indexOf("/");
+  if (slashIdx <= 0) {
+    return false;
+  }
+  const host = moduleName.slice(0, slashIdx);
+  return host.includes(".") && !/\s/.test(host);
 }
 
 function findInstalledPackageRoot(sourceRoot, moduleName) {
@@ -544,6 +572,11 @@ function findInstalledPackageRoot(sourceRoot, moduleName) {
     if (fs.existsSync(plain)) {
       return plain;
     }
+  }
+
+  const installedFromGenerated = findInstalledFromGeneratedPackageJson(sourceRoot, nodeModules);
+  if (installedFromGenerated) {
+    return installedFromGenerated;
   }
 
   const entries = fs.readdirSync(nodeModules, { withFileTypes: true });
@@ -568,6 +601,28 @@ function findInstalledPackageRoot(sourceRoot, moduleName) {
     return packages[0];
   }
   throw new Error(`cannot determine installed source package root for ${moduleName}`);
+}
+
+function findInstalledFromGeneratedPackageJson(sourceRoot, nodeModules) {
+  const generatedPath = path.join(sourceRoot, "package.json");
+  if (!fs.existsSync(generatedPath)) {
+    return null;
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(generatedPath, "utf8"));
+  } catch {
+    return null;
+  }
+  const names = Object.keys(pkg?.dependencies ?? {});
+  if (names.length !== 1) {
+    return null;
+  }
+  const installedName = names[0];
+  const installedPath = installedName.startsWith("@")
+    ? path.join(nodeModules, ...installedName.split("/"))
+    : path.join(nodeModules, installedName);
+  return fs.existsSync(installedPath) ? installedPath : null;
 }
 
 function getNetrcFromEnv() {
