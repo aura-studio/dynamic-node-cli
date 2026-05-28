@@ -303,7 +303,16 @@ async function writeZip(zipPath, addEntries) {
   });
 }
 
-async function addDirectoryToZip(zipfile, rootDir, currentDir) {
+async function addDirectoryToZip(zipfile, rootDir, currentDir, visited) {
+  if (!visited) {
+    visited = new Set();
+    try {
+      visited.add(await fs.promises.realpath(rootDir));
+    } catch {
+      // realpath may fail on the root; safe to keep walking.
+    }
+  }
+
   const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -318,10 +327,26 @@ async function addDirectoryToZip(zipfile, rootDir, currentDir) {
     }
 
     if (entry.isSymbolicLink()) {
-      const stat = await fs.promises.stat(fullPath);
+      let stat;
+      try {
+        stat = await fs.promises.stat(fullPath);
+      } catch (err) {
+        // Broken or unreadable symlink — skip it instead of aborting the whole zip.
+        console.log(`[dynamic-node-cli] skipping unreadable symlink ${fullPath}: ${err.code || err.message}`);
+        continue;
+      }
       if (stat.isDirectory()) {
+        const real = await fs.promises.realpath(fullPath).catch(() => null);
+        if (real && visited.has(real)) {
+          // Symlink target already visited (typically a file: dep that loops back
+          // into the source tree, e.g. tunnel/node_modules/<pkg> -> ..). Skip
+          // to avoid ELOOP without losing the symlink entry itself.
+          zipfile.addEmptyDirectory(`${rel}/`);
+          continue;
+        }
+        if (real) visited.add(real);
         zipfile.addEmptyDirectory(`${rel}/`);
-        await addDirectoryToZip(zipfile, rootDir, fullPath);
+        await addDirectoryToZip(zipfile, rootDir, fullPath, visited);
         continue;
       }
 
@@ -330,8 +355,14 @@ async function addDirectoryToZip(zipfile, rootDir, currentDir) {
     }
 
     if (entry.isDirectory()) {
+      const real = await fs.promises.realpath(fullPath).catch(() => null);
+      if (real && visited.has(real)) {
+        zipfile.addEmptyDirectory(`${rel}/`);
+        continue;
+      }
+      if (real) visited.add(real);
       zipfile.addEmptyDirectory(`${rel}/`);
-      await addDirectoryToZip(zipfile, rootDir, fullPath);
+      await addDirectoryToZip(zipfile, rootDir, fullPath, visited);
       continue;
     }
 
