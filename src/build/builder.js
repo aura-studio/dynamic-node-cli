@@ -138,7 +138,11 @@ export class Builder {
     fs.rmSync(sourceRoot, { recursive: true, force: true });
     fs.mkdirSync(sourceRoot, { recursive: true, mode: 0o755 });
 
-    const result = runNpm(["install", spec], sourceRoot);
+    // --install-strategy=nested keeps every package's deps under its own
+    // node_modules instead of hoisting them to the install root. variant=full
+    // zips a sub-package (e.g. `tunnel/`) and would otherwise miss the source
+    // module's transitive deps that npm hoisted out of reach.
+    const result = runNpm(["install", "--install-strategy=nested", spec], sourceRoot);
     if (result.error || result.status !== 0) {
       throw new Error(`npm install source failed: ${result.error?.message ?? result.status}`);
     }
@@ -378,11 +382,20 @@ function timestampSuffix() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z").replaceAll(":", "-");
 }
 
-async function copyDirectory(srcDir, destDir) {
+async function copyDirectory(srcDir, destDir, visited) {
   const srcRoot = path.resolve(srcDir);
   const destRoot = path.resolve(destDir);
   if (destRoot === srcRoot || destRoot.startsWith(srcRoot + path.sep)) {
     throw new Error(`full build output directory must not be inside source directory: ${destDir}`);
+  }
+
+  if (!visited) {
+    visited = new Set();
+    try {
+      visited.add(await fs.promises.realpath(srcDir));
+    } catch {
+      // Safe to continue if realpath fails on the root.
+    }
   }
 
   await fs.promises.mkdir(destDir, { recursive: true, mode: 0o755 });
@@ -395,16 +408,37 @@ async function copyDirectory(srcDir, destDir) {
     const src = path.join(srcDir, entry.name);
     const dest = path.join(destDir, entry.name);
     if (entry.isSymbolicLink()) {
-      const stat = await fs.promises.stat(src);
+      let stat;
+      try {
+        stat = await fs.promises.stat(src);
+      } catch (err) {
+        console.log(`[dynamic-node-cli] skipping unreadable symlink ${src}: ${err.code || err.message}`);
+        continue;
+      }
       if (stat.isDirectory()) {
-        await copyDirectory(src, dest);
+        const real = await fs.promises.realpath(src).catch(() => null);
+        if (real && visited.has(real)) {
+          // Cycle: symlink points back into a directory we already copied
+          // (e.g. tunnel/node_modules/<pkg> -> ..). Create the dir entry but
+          // do not recurse.
+          await fs.promises.mkdir(dest, { recursive: true, mode: 0o755 });
+          continue;
+        }
+        if (real) visited.add(real);
+        await copyDirectory(src, dest, visited);
         continue;
       }
       await fs.promises.copyFile(src, dest);
       continue;
     }
     if (entry.isDirectory()) {
-      await copyDirectory(src, dest);
+      const real = await fs.promises.realpath(src).catch(() => null);
+      if (real && visited.has(real)) {
+        await fs.promises.mkdir(dest, { recursive: true, mode: 0o755 });
+        continue;
+      }
+      if (real) visited.add(real);
+      await copyDirectory(src, dest, visited);
       continue;
     }
     await fs.promises.copyFile(src, dest);
