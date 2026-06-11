@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.821.0",
+    "adm-zip": "^0.5.16",
     "commander": "^12.1.0",
     "esbuild": "^0.25.5",
     "js-yaml": "^4.1.0",

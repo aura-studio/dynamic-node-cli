@@ -7,6 +7,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { createS3ClientConfig } from "../s3/client-config.js";
+import { ensureExtracted } from "./extract.js";
 
 export class S3Remote {
   constructor(remote) {
@@ -109,7 +110,12 @@ export class S3Remote {
 
         const task = tasks[index];
         if (!opt.force && fs.existsSync(task.localPath)) {
-          success += 1;
+          try {
+            ensureExtracted(task.localPath, false);
+            success += 1;
+          } catch (err) {
+            errors.push(err);
+          }
           continue;
         }
 
@@ -119,6 +125,7 @@ export class S3Remote {
             mode: 0o755,
           });
           await this.downloadOne(client, task.key, task.localPath);
+          ensureExtracted(task.localPath, true);
           success += 1;
         } catch (err) {
           errors.push(err);
