@@ -34,9 +34,12 @@ export class Builder {
       } else {
         await this.buildBundle();
       }
+      // Print success only after every build step succeeded. Previously this
+      // lived in `finally`, so a failed build still logged "done!" right before
+      // the real error surfaced, which was badly misleading.
+      console.log("done!");
     } finally {
       await this.restoreNetrc();
-      console.log("done!");
     }
   }
 
@@ -44,7 +47,19 @@ export class Builder {
     const srcPath = this.resolveSourcePath();
     console.log(`npm install in ${srcPath}`);
 
-    const result = runNpm(["install"], srcPath);
+    // Prefer a reproducible install from the package's committed lockfile
+    // (`npm ci`) so an unchanged source commit yields an unchanged dependency
+    // tree. Fall back to a plain install when there is no lockfile, or when the
+    // lockfile is out of sync with package.json (`npm ci` is strict and aborts).
+    const hasLockfile =
+      fs.existsSync(path.join(srcPath, "package-lock.json")) ||
+      fs.existsSync(path.join(srcPath, "npm-shrinkwrap.json"));
+
+    let result = runNpm([hasLockfile ? "ci" : "install"], srcPath);
+    if (hasLockfile && (result.error || result.status !== 0)) {
+      console.log("npm ci failed; falling back to npm install");
+      result = runNpm(["install"], srcPath);
+    }
 
     if (result.error || result.status !== 0) {
       throw new Error(`npm install failed: ${result.error?.message ?? result.status}`);
@@ -135,8 +150,46 @@ export class Builder {
     const spec = createNpmSpec(this.config.sourceModule, this.config.sourceVersion);
 
     console.log(`npm install source ${spec}`);
+
+    // The source install is non-deterministic in practice (npm can exit 0 yet
+    // leave no local node_modules). Retry the whole attempt up to 3 times, each
+    // time from a freshly cleaned sourceRoot, before giving up. NOTE: this is a
+    // stopgap for the flake, not a fix for the underlying non-reproducibility.
+    const maxAttempts = 3;
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return this.attemptInstallExternalSource(sourceRoot, spec);
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxAttempts) {
+          console.log(
+            `source install attempt ${attempt}/${maxAttempts} failed: ${err.message}; retrying...`,
+          );
+        }
+      }
+    }
+    throw new Error(
+      `npm install source failed after ${maxAttempts} attempts: ${lastError?.message ?? lastError}`,
+    );
+  }
+
+  attemptInstallExternalSource(sourceRoot, spec) {
     fs.rmSync(sourceRoot, { recursive: true, force: true });
     fs.mkdirSync(sourceRoot, { recursive: true, mode: 0o755 });
+
+    // Anchor npm's project root to sourceRoot by writing an explicit
+    // package.json BEFORE installing. Without it, `npm install <spec>` in a
+    // directory that has no package.json walks UP the tree to find a project
+    // root and can install into an ancestor's node_modules instead of
+    // sourceRoot/node_modules — leaving sourceRoot/node_modules absent and
+    // making findInstalledPackageRoot crash with a bare ENOENT. The anchor makes
+    // the install location deterministic regardless of what lives above sourceRoot.
+    fs.writeFileSync(
+      path.join(sourceRoot, "package.json"),
+      JSON.stringify({ name: "dynamic-source", version: "0.0.0", private: true }, null, 2) + "\n",
+      "utf8",
+    );
 
     // --install-strategy=nested keeps every package's deps under its own
     // node_modules instead of hoisting them to the install root. variant=full
@@ -145,6 +198,19 @@ export class Builder {
     const result = runNpm(["install", "--install-strategy=nested", spec], sourceRoot);
     if (result.error || result.status !== 0) {
       throw new Error(`npm install source failed: ${result.error?.message ?? result.status}`);
+    }
+
+    // Guard: npm can exit 0 yet leave no local node_modules (e.g. it printed
+    // "changed N packages" after resolving the tree elsewhere instead of
+    // "added N packages" here). Fail with an actionable message rather than
+    // letting findInstalledPackageRoot throw a bare ENOENT on the missing dir.
+    const installedModules = path.join(sourceRoot, "node_modules");
+    if (!fs.existsSync(installedModules)) {
+      throw new Error(
+        `npm install source produced no node_modules at ${installedModules}; ` +
+          `the source dependency '${spec}' was not installed locally ` +
+          `(check the npm output above — "added 0 packages"/"changed" indicates npm installed elsewhere)`,
+      );
     }
 
     const moduleRoot = findInstalledPackageRoot(sourceRoot, this.config.sourceModule);
